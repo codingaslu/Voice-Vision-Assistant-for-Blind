@@ -177,7 +177,6 @@ We've included a comprehensive testing script to verify all evaluation requireme
    ```bash
    python evaluation.py
    ```
-```
 
 This script offers four testing options:
 
