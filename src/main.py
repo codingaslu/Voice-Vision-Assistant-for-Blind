@@ -29,7 +29,7 @@ load_dotenv()
 
 @dataclass
 class UserData:
-    current_tool: str = "general"  # Default tool: "general", "internet", or "visual"
+    current_tool: str = "visual"  # Default tool: "visual" or "internet"
     last_query: str = ""
     last_response: str = ""
     visual_processor: Optional[VisualProcessor] = None
@@ -41,7 +41,7 @@ RunContext_T = RunContext[UserData]
 class AllyVisionAgent(Agent):
     """
     A single agent that modifies LLM output before sending to TTS.
-    Handles three different tools: general, internet, and visual.
+    Handles two different tools: internet and visual.
     """
     def __init__(self) -> None:
         super().__init__(
@@ -121,25 +121,6 @@ class AllyVisionAgent(Agent):
         userdata.last_query = text
         await super().on_message(text)
     
-    @function_tool()
-    async def use_general_tool(self, context: RunContext_T) -> str:
-        """
-        Switch to the general knowledge tool. Use this when the user wants
-        to get general information from the assistant's knowledge.
-        """
-        userdata = context.userdata
-        userdata.current_tool = "general"
-        return "Switched to general knowledge tool. I'll use my general knowledge to assist you."
-    
-    @function_tool()
-    async def use_internet_tool(self, context: RunContext_T) -> str:
-        """
-        Switch to the internet search tool. Use this when the user wants
-        to search for information on the internet.
-        """
-        userdata = context.userdata
-        userdata.current_tool = "internet"
-        return "Switched to internet search tool. I'll provide web search results for your queries."
     
     @function_tool()
     async def search_internet(
