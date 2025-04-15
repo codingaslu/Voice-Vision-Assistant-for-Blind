@@ -213,24 +213,6 @@ Groq API is integrated using the official Groq Python client. The integration al
 
 The system automatically routes images to Groq API when GPT-4o refuses to describe people.
 
-## Success Criteria
-
-The implementation successfully meets all specified criteria:
-
-1. **Reliability**: 
-   - Successfully processes 10+ image questions in succession
-   - 95%+ success rate for image captures
-   - Handles both people and non-people images correctly
-
-2. **Speed**: 
-   - TTFT < 500ms using Groq's API (typically ~100-150ms)
-   - Image capture under 1 second
-   - No degradation in response times across multiple requests
-
-3. **Consistency**:
-   - Reliable image quality across multiple captures
-   - Maintains performance across different image types
-
 ## Challenges and Solutions
 
 ### Privacy Considerations
