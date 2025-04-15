@@ -19,6 +19,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+.env
 
 # Environment and virtual environments
 # .env  # We're keeping this file
@@ -82,3 +83,4 @@ htmlcov/
 
 # Generated files
 conversation_log.txt 
+.gitignore
