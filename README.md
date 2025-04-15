@@ -118,8 +118,8 @@ Envision-AI-Assignment-main/
 
 1. Clone the repository
    ```bash
-   git clone https://github.com/your-username/Envision-AI.git
-   cd Envision-AI
+   git clone https://github.com/codingaslu/Ally-Clone-Assignment.git
+   cd Ally-Clone-Assignment
    ```
 
 2. Create a virtual environment and install dependencies
