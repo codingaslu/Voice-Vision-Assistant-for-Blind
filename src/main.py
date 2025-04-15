@@ -21,7 +21,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-logger = logging.getLogger("text-processor-agent")
+logger = logging.getLogger("ally-vision-agent")
 logger.setLevel(logging.INFO)
 
 # Load environment variables
@@ -38,7 +38,7 @@ class UserData:
 
 RunContext_T = RunContext[UserData]
 
-class TextProcessorAgent(Agent):
+class AllyVisionAgent(Agent):
     """
     A single agent that modifies LLM output before sending to TTS.
     Handles three different tools: general, internet, and visual.
@@ -96,7 +96,7 @@ class TextProcessorAgent(Agent):
     
     async def on_enter(self) -> None:
         """Called when the agent is first started"""
-        logger.info("Entering TextProcessorAgent")
+        logger.info("Entering AllyVisionAgent")
         
         # Get current user data
         userdata: UserData = self.session.userdata
@@ -360,7 +360,7 @@ async def entrypoint(ctx: JobContext):
     )
     
     # Create processor agent
-    processor_agent = TextProcessorAgent()
+    processor_agent = AllyVisionAgent()
     
     # Start the agent session
     await agent_session.start(

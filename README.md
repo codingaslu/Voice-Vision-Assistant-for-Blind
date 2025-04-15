@@ -135,7 +135,7 @@ Envision-AI-Assignment-main/
    LIVEKIT_URL=...
    LIVEKIT_API_KEY=...
    LIVEKIT_API_SECRET=...
-   DEEPGRAM_API_KEY=...
+   DEEPGRAM_API_KEY=...  # Generate a new API key from Deepgram dashboard as the provided one looks expired
    OPENAI_API_KEY=...
    ELEVEN_API_KEY=...
    
@@ -148,6 +148,11 @@ Envision-AI-Assignment-main/
    ```
 
 ### Running the Assistant
+
+Before running the application, download plugin dependency files:
+```bash
+python app.py download-files
+```
 
 Run the application:
 
