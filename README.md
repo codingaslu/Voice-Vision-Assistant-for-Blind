@@ -166,23 +166,6 @@ python app.py dev
 
 Connect using the [LiveKit hosted playground](https://agents-playground.livekit.io/).
 
-## Performance Evaluation
-
-The system has been thoroughly tested and meets all performance requirements:
-
-1. **Reliability**: 
-   - Successfully processes 10+ image questions in succession
-   - 95%+ success rate for image captures
-   - Handles both people and non-people images correctly
-
-2. **Speed**: 
-   - TTFT < 500ms using Groq's API (typically ~100-150ms)
-   - Image capture under 1 second
-   - No degradation in response times across multiple requests
-
-3. **Consistency**:
-   - Reliable image quality across multiple captures
-   - Maintains performance across different image types
 
 ### Implementation Details
 
