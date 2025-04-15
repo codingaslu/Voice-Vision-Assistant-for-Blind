@@ -256,4 +256,8 @@ This project is proprietary and confidential. All rights reserved.
 - Groq for API access to Llama models
 - Deepgram and ElevenLabs for voice technologies
 
+## Support
+
+If you encounter any issues or have questions, please email muhammedaslam179@gmail.com
+
 
