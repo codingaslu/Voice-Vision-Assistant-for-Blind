@@ -266,10 +266,14 @@ The Groq integration is optimized through:
 
 ## Future Improvements
 
+- Advanced image preprocessing for optimal quality
+- Google Map integration for location-based queries
+- Distance, weather, and time information in responses
+- Calendar integration for scheduling
+- QR code generation and scanning
 - Enhanced caching for faster responses
 - Multi-image sequence processing for better context
 - More personalized voice options
-- Advanced image preprocessing for optimal quality
 
 ## License
 
