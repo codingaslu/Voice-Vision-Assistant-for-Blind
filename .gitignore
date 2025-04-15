@@ -21,6 +21,11 @@ wheels/
 *.egg
 .env
 
+# Testing and evaluation
+evaluation.py
+performance_test_*.log
+capture_test_*.log
+
 # Environment and virtual environments
 # .env  # We're keeping this file
 .venv

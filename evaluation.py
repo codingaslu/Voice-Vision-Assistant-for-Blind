@@ -36,7 +36,7 @@ import io
 from groq import Groq
 from openai import OpenAI
 from src.config import get_config
-from src.groq_handler import GroqHandler
+from src.tools.groq_handler import GroqHandler
 import random
 
 async def test_groq(image, groq_api_key, groq_model_id):
@@ -160,18 +160,13 @@ async def run_performance_evaluation(groq_api_key, groq_model_id, openai_api_key
                   glob.glob(os.path.join(image_dir, "*.jpeg")) + \
                   glob.glob(os.path.join(image_dir, "*.png"))
     
-    # Default to at least apj.jpg for testing
-    if not image_files or len(image_files) < 2:
-        print("Not enough test images found. Using demo mode with APJ image.")
-        # We'll just use our APJ image multiple times as a demonstration
-        apj_path = os.path.join(image_dir, "apj.jpg")
-        if os.path.exists(apj_path):
-            image_files = [apj_path] * 10  # Simulate 10 images
-            print(f"Demo mode: Using {apj_path} duplicated 10 times for testing.")
-            print(f"For a proper test, add multiple images to the {image_dir} directory.")
-        else:
-            print(f"Error: APJ image not found at {apj_path}. Please ensure at least one test image exists.")
-            return
+    if not image_files:
+        print("Error: No test images found. Please add images to the images/ directory.")
+        print("For optimal testing, add:")
+        print("- At least 5 images with people")
+        print("- At least 5 images without people")
+        print("- Images should be JPG, JPEG, or PNG format")
+        return
     
     # Setup clients
     groq_handler = GroqHandler()
@@ -525,14 +520,10 @@ async def check_image_directory():
         print(f"Please add JPG, JPEG or PNG images to: {os.path.abspath(image_dir)}")
         return False
     
-    # APJ check
-    apj_exists = os.path.exists(os.path.join(image_dir, "apj.jpg"))
-    
     # Print summary
     print(f"\nImage Directory: {os.path.abspath(image_dir)}")
     print(f"Total test images: {len(all_images)}")
     print(f"Image formats: {len(jpg_files)} JPG, {len(jpeg_files)} JPEG, {len(png_files)} PNG")
-    print(f"Default test image (apj.jpg): {'Available' if apj_exists else 'Not found'}")
     
     if len(all_images) < 10:
         print(f"\n[SUGGESTION] For best results, add at least 10 images (5 with people, 5 without)")
@@ -687,13 +678,18 @@ async def main():
     # First check the image directory setup
     await check_image_directory()
     
-    # Get the APJ image path
-    image_path = os.path.join("images", "apj.jpg")
+    # Get all available images
+    image_dir = os.path.join("images")
+    image_files = glob.glob(os.path.join(image_dir, "*.jpg")) + \
+                  glob.glob(os.path.join(image_dir, "*.jpeg")) + \
+                  glob.glob(os.path.join(image_dir, "*.png"))
     
-    if not os.path.exists(image_path):
-        print(f"Error: Image not found at {image_path}")
+    if not image_files:
+        print("Error: No test images found. Please add some images to the images/ directory.")
         return
     
+    # Use the first available image for individual tests
+    image_path = image_files[0]
     print(f"Loading image from {image_path}")
     
     # Load the image
