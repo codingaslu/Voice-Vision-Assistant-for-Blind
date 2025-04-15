@@ -143,7 +143,7 @@ Envision-AI-Assignment-main/
    VISION_PROVIDER=groq
    
    # Groq API configuration
-   GROQ_API_KEY=your_groq_api_key
+   GROQ_API_KEY=your_groq_api_key  # Get your API key from https://console.groq.com/keys
    GROQ_MODEL_ID=meta-llama/llama-4-scout-17b-16e-instruct
    ```
 
@@ -167,8 +167,16 @@ Connect using the [LiveKit hosted playground](https://agents-playground.livekit.
 
 We've included a comprehensive testing script to verify all evaluation requirements of selected model:
 
-```bash
-python evaluation.py
+1. Create an 'images' folder and add test images (at least 10 recommended, with 5 containing people)
+   ```bash
+   mkdir -p images
+   # Add your test images to the images folder
+   ```
+
+2. Run the evaluation script:
+   ```bash
+   python evaluation.py
+   ```
 ```
 
 This script offers four testing options:
