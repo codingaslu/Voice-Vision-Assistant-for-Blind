@@ -88,10 +88,8 @@ The model excels at vision tasks and can reliably process images containing peop
 ```
 Envision-AI-Assignment-main/
 ├── app.py                  # Main entry point
-├── assistant.py            # Assistant interaction logic
 ├── requirements.txt        # Dependencies
 ├── .env                    # Environment variables
-├── test_groq.py            # Performance evaluation script
 ├── images/                 # Images and diagrams
 └── src/
     ├── main.py             # Entry point and agent implementation
