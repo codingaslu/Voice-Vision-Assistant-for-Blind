@@ -165,10 +165,10 @@ Connect using the [LiveKit hosted playground](https://agents-playground.livekit.
 
 ## Performance Evaluation
 
-We've included a comprehensive testing script to verify all performance requirements:
+We've included a comprehensive testing script to verify all evaluation requirements of selected model:
 
 ```bash
-python test_groq.py
+python evaluation.py
 ```
 
 This script offers four testing options:
