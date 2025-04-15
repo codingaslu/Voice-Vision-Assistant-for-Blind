@@ -21,10 +21,12 @@ wheels/
 *.egg
 .env
 
-# Testing and evaluation
+# Testing and evaluation files
 evaluation.py
+test_groq.py
 performance_test_*.log
 capture_test_*.log
+*_test_*.log
 
 # Environment and virtual environments
 # .env  # We're keeping this file
