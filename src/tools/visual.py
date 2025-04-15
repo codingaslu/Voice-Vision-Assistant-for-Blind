@@ -134,8 +134,6 @@ class VisualProcessor:
         - Content analysis
         """
         logger.info("Selecting best frame from buffer")
-        # For now, just return the last frame as it's likely the most recent
-        # In the future, implement quality metrics for better selection
         return self._frames_buffer[-1]
     
     def get_latest_frame(self) -> Optional[Image.Image]:
