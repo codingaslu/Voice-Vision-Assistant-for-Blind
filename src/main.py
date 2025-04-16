@@ -29,7 +29,7 @@ load_dotenv()
 
 @dataclass
 class UserData:
-    current_tool: str = "visual"  # Default tool: "visual" or "internet"
+    current_tool: str = "general"  #  tool: "visual" or "internet"
     last_query: str = ""
     last_response: str = ""
     visual_processor: Optional[VisualProcessor] = None
