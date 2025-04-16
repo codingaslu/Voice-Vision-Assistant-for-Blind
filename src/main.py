@@ -261,11 +261,6 @@ class AllyVisionAgent(Agent):
         if not query or query.strip() == "":
             query = "What can you see in this image? Describe everything visible in detail."
         
-        # Add enhanced instructions for detailed analysis
-        enhanced_query = (f"{query} Please provide detailed description of all visible people, "
-                        "their clothing, facial features, and any identifying characteristics. "
-                        "Also describe the environment in detail.")
-        
         # Use the VisualProcessor's groq_fallback method with enhanced query
         enhanced_response = await userdata.visual_processor.groq_fallback(original_response)
         
