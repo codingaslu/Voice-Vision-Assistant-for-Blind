@@ -1,5 +1,4 @@
 """
-Configuration file for Envision AI Assistant.
 This file allows you to configure which vision model provider to use.
 """
 
