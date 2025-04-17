@@ -271,21 +271,21 @@ class VisualProcessor:
             openai_response = await self.analyze_image(image, query)
             
             # Quick check for refusal indicators that might require Groq
-            refusal_indicators = [
-                "cannot identify", "can't identify", "cannot recognize", 
-                "can't recognize", "cannot describe people", "don't identify",
-                "unable to identify", "cannot provide details about people",
-                "privacy reasons", "cannot determine who", "unable to tell who"
-            ]
+            # refusal_indicators = [
+            #     "cannot identify", "can't identify", "cannot recognize", 
+            #     "can't recognize", "cannot describe people", "don't identify",
+            #     "unable to identify", "cannot provide details about people",
+            #     "privacy reasons", "cannot determine who", "unable to tell who"
+            # ]
             
-            # Check if any refusal indicators are in the response
-            need_fallback = any(indicator in openai_response.lower() for indicator in refusal_indicators)
+            # # Check if any refusal indicators are in the response
+            # need_fallback = any(indicator in openai_response.lower() for indicator in refusal_indicators)
             
             # If refusal detected, use Groq fallback
-            if need_fallback:
-                logger.info("Detected potential limitations in OpenAI response, using Groq fallback")
-                groq_response = await self.groq_fallback(openai_response)
-                return groq_response, True
+            # if need_fallback:
+            #     logger.info("Detected potential limitations in OpenAI response, using Groq fallback")
+            #     groq_response = await self.groq_fallback(openai_response)
+            #     return groq_response, True
             
             return openai_response, False
             
