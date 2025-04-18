@@ -275,7 +275,13 @@ class VisualProcessor:
                 "cannot identify", "can't identify", "cannot recognize", 
                 "can't recognize", "cannot describe people", "don't identify",
                 "unable to identify", "cannot provide details about people",
-                "privacy reasons", "cannot determine who", "unable to tell who"
+                "privacy reasons", "cannot determine who", "unable to tell who",
+                "can't specifically identify", "cannot specifically identify", 
+                "unable to specifically identify", "apologize", "oversight",
+                "unable to identify", "unable to tell", "unable to describe",
+                "unable to recognize", "unable to provide details about",
+                "unable to determine who", "unable to tell who", "unable to describe people",
+                "unable to recognize people", "unable to provide details about people"
             ]
             
             # Determine if Groq fallback is needed
