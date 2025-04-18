@@ -270,7 +270,24 @@ class VisualProcessor:
             # Analyze with OpenAI
             openai_response = await self.analyze_image(image, query)
             
-            return openai_response, False
+            # Check for refusal indicators that might require Groq
+            refusal_indicators = [
+                "cannot identify", "can't identify", "cannot recognize", 
+                "can't recognize", "cannot describe people", "don't identify",
+                "unable to identify", "cannot provide details about people",
+                "privacy reasons", "cannot determine who", "unable to tell who"
+            ]
+            
+            # Determine if Groq fallback is needed
+            need_fallback = any(indicator in openai_response.lower() for indicator in refusal_indicators)
+            
+            # Use Groq fallback if necessary
+            if need_fallback:
+                logger.info("Detected potential limitations in OpenAI response, using Groq fallback")
+                groq_response = await self.groq_fallback(openai_response)
+                return groq_response, True
+            else:
+                return openai_response, False
             
         except Exception as e:
             logger.error(f"Error in capture_and_analyze: {e}")

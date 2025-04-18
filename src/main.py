@@ -126,6 +126,11 @@ class AllyVisionAgent(Agent):
         logger.info(f"USER QUERY: {text}")
         userdata: UserData = self.session.userdata
         userdata.last_query = text
+        
+        # Reset to general mode for each new query unless overridden by a tool
+        userdata.current_tool = "general"
+        logger.info(f"Set tool mode to: general")
+        
         await super().on_message(text)
     
     
@@ -145,6 +150,7 @@ class AllyVisionAgent(Agent):
         
         # Switch to internet mode
         userdata.current_tool = "internet"
+        logger.info(f"Switched tool mode to: internet")
         
         # Ensure we have the internet search tool
         if userdata.internet_search is None:
@@ -166,6 +172,10 @@ class AllyVisionAgent(Agent):
             
             # Store the response for future reference
             userdata.last_response = response
+            
+            # Switch back to general mode after completing internet search
+            userdata.current_tool = "general"
+            logger.info("Switched back to general mode after internet search")
             
             return response
             
@@ -220,6 +230,7 @@ class AllyVisionAgent(Agent):
                 
             # Switch to visual mode
             userdata.current_tool = "visual"
+            logger.info(f"Switched tool mode to: visual")
             
             # Use the comprehensive capture_and_analyze method
             response, used_fallback = await userdata.visual_processor.capture_and_analyze(room, query)
@@ -228,6 +239,13 @@ class AllyVisionAgent(Agent):
             userdata.last_query = query
             userdata.last_response = response
             
+            # Log fallback status
+            if used_fallback:
+                logger.info("Used Groq fallback automatically")
+            
+            # Switch back to general mode after completing visual analysis
+            userdata.current_tool = "general"
+            logger.info("Switched back to general mode after visual analysis")
             
             return response
             
@@ -253,6 +271,10 @@ class AllyVisionAgent(Agent):
             logger.error("No visual processor available")
             return "I need to use the vision tool first before I can use Groq for analysis."
         
+        # Since we're analyzing an image, ensure we're in visual mode
+        userdata.current_tool = "visual"
+        logger.info(f"Confirmed tool mode: visual (for Groq fallback)")
+        
         # Get the current query or use a default
         query = userdata.last_query
         if not query or query.strip() == "":
@@ -264,6 +286,10 @@ class AllyVisionAgent(Agent):
         # Store the enhanced response
         userdata.last_response = enhanced_response
         
+        # Switch back to general mode after Groq fallback
+        userdata.current_tool = "general"
+        logger.info("Switched back to general mode after Groq fallback")
+        
         return enhanced_response
     
     async def llm_node(self, chat_ctx, tools, model_settings=None):
@@ -271,6 +297,7 @@ class AllyVisionAgent(Agent):
         # Access the LLM directly from self instance
         userdata: UserData = self.session.userdata
         current_tool = userdata.current_tool
+        
         
         logger.info(f"Processing LLM output with current tool: {current_tool}")
         
