@@ -228,9 +228,6 @@ class AllyVisionAgent(Agent):
             userdata.last_query = query
             userdata.last_response = response
             
-            # Log fallback status
-            if used_fallback:
-                logger.info("Used Groq fallback automatically")
             
             return response
             
