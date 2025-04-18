@@ -5,8 +5,8 @@ Internet search module using DuckDuckGo
 import logging
 from typing import List, Dict, Any, Optional
 
+# Simple logger without custom handler, will use root logger's config
 logger = logging.getLogger("internet-search")
-logger.setLevel(logging.INFO)
 
 class InternetSearch:
     """
@@ -44,8 +44,6 @@ class InternetSearch:
         # News search
         news_wrapper = DuckDuckGoSearchAPIWrapper(time="m", max_results=self.max_results)
         self._news_search = DuckDuckGoSearchResults(api_wrapper=news_wrapper, backend="news")
-        
-        logger.info("Search tools initialized successfully")
     
     async def search(self, query: str, include_news: bool = True) -> Dict[str, Any]:
         """
@@ -59,7 +57,6 @@ class InternetSearch:
             Dictionary containing general results, detailed results with links, and news
         """
         self._last_query = query
-        logger.info(f"Performing comprehensive search for: {query}")
         
         if self._search is None:
             self._initialize_search_tools()
@@ -74,7 +71,6 @@ class InternetSearch:
         try:
             general_results = self._search.invoke(query)
             results["general_info"] = general_results
-            logger.info(f"General search complete with {len(general_results.split())} words")
         except Exception as e:
             logger.error(f"Error in general search: {e}")
             results["general_info"] = f"Error searching for general information: {str(e)}"
@@ -83,7 +79,6 @@ class InternetSearch:
         try:
             detailed_results = self._search_detailed.invoke(query)
             results["detailed_results"] = detailed_results[:5]  # Limit to top 5 results
-            logger.info(f"Detailed search complete with {len(detailed_results)} results")
         except Exception as e:
             logger.error(f"Error in detailed search: {e}")
             results["detailed_results"] = [{"title": "Error", "snippet": f"Error performing detailed search: {str(e)}", "link": ""}]
@@ -94,7 +89,6 @@ class InternetSearch:
                 news_results = self._news_search.invoke(query)
                 parsed_news = self._parse_news_results(news_results)
                 results["news_articles"] = parsed_news[:3]  # Limit to top 3 news articles
-                logger.info(f"News search complete with {len(parsed_news)} results")
             except Exception as e:
                 logger.error(f"Error in news search: {e}")
                 results["news_articles"] = [{"title": "Error", "snippet": f"Error searching for news: {str(e)}", "link": ""}]

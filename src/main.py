@@ -16,13 +16,8 @@ from livekit.plugins import deepgram, openai, elevenlabs, silero
 from .tools.visual import VisualProcessor
 from .tools.internet_search import InternetSearch
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Simple logger without custom handler, will use root logger's config
 logger = logging.getLogger("ally-vision-agent")
-logger.setLevel(logging.INFO)
 
 # Load environment variables
 load_dotenv()
@@ -129,7 +124,6 @@ class AllyVisionAgent(Agent):
         
         # Reset to general mode for each new query unless overridden by a tool
         userdata.current_tool = "general"
-        logger.info(f"Set tool mode to: general")
         
         await super().on_message(text)
     
@@ -150,7 +144,6 @@ class AllyVisionAgent(Agent):
         
         # Switch to internet mode
         userdata.current_tool = "internet"
-        logger.info(f"Switched tool mode to: internet")
         
         # Ensure we have the internet search tool
         if userdata.internet_search is None:
@@ -158,7 +151,7 @@ class AllyVisionAgent(Agent):
             logger.info("Created internet search tool on demand")
         
         # Log the search query
-        logger.info(f"Searching the internet for: {query}")
+        logger.info(f"Searching: {query[:30]}...")
         
         try:
             # Perform comprehensive search
@@ -175,7 +168,6 @@ class AllyVisionAgent(Agent):
             
             # Switch back to general mode after completing internet search
             userdata.current_tool = "general"
-            logger.info("Switched back to general mode after internet search")
             
             return response
             
@@ -210,7 +202,7 @@ class AllyVisionAgent(Agent):
             else:
                 query = "What can you see in this image? Describe everything visible in detail."
                 
-        logger.info(f"Using see_and_describe tool with query: {query}")
+        logger.info(f"Visual analysis: {query[:30]}...")
         
         try:
             # Ensure we have access to the room
@@ -230,7 +222,6 @@ class AllyVisionAgent(Agent):
                 
             # Switch to visual mode
             userdata.current_tool = "visual"
-            logger.info(f"Switched tool mode to: visual")
             
             # Use the comprehensive capture_and_analyze method
             response, used_fallback = await userdata.visual_processor.capture_and_analyze(room, query)
@@ -239,13 +230,8 @@ class AllyVisionAgent(Agent):
             userdata.last_query = query
             userdata.last_response = response
             
-            # Log fallback status
-            if used_fallback:
-                logger.info("Used Groq fallback automatically")
-            
             # Switch back to general mode after completing visual analysis
             userdata.current_tool = "general"
-            logger.info("Switched back to general mode after visual analysis")
             
             return response
             
@@ -264,7 +250,7 @@ class AllyVisionAgent(Agent):
         This is useful when the initial analysis couldn't identify people or other important details.
         """
         userdata = context.userdata
-        logger.info("Using Groq fallback manually with original response: " + original_response[:100] + "...")
+        logger.info("Using Groq fallback")
         
         # Check if we have a visual processor
         if userdata.visual_processor is None:
@@ -273,7 +259,6 @@ class AllyVisionAgent(Agent):
         
         # Since we're analyzing an image, ensure we're in visual mode
         userdata.current_tool = "visual"
-        logger.info(f"Confirmed tool mode: visual (for Groq fallback)")
         
         # Get the current query or use a default
         query = userdata.last_query
@@ -288,7 +273,6 @@ class AllyVisionAgent(Agent):
         
         # Switch back to general mode after Groq fallback
         userdata.current_tool = "general"
-        logger.info("Switched back to general mode after Groq fallback")
         
         return enhanced_response
     
@@ -297,9 +281,6 @@ class AllyVisionAgent(Agent):
         # Access the LLM directly from self instance
         userdata: UserData = self.session.userdata
         current_tool = userdata.current_tool
-        
-        
-        logger.info(f"Processing LLM output with current tool: {current_tool}")
         
         # Keep track of the full response
         full_response = ""
@@ -334,22 +315,20 @@ class AllyVisionAgent(Agent):
                     
                     yield chunk
             
-            # Log the complete response after the stream is finished
-            logger.info(f"AGENT RESPONSE: {full_response}")
+            # Store the response
             userdata.last_response = full_response
         
         return process_stream()
 
 async def entrypoint(ctx: JobContext):
     await ctx.connect()
-    logger.info(f"Room name: {ctx.room.name}")
     
     # Initialize user data with tools and room context
     userdata = UserData()
     userdata.visual_processor = VisualProcessor()
     userdata.internet_search = InternetSearch()
+    userdata.current_tool = "general"  # Explicitly set initial tool mode
     userdata.room_ctx = ctx  # Store the JobContext for room access
-    logger.info("Initialized tools in entrypoint")
     
     # Create agent session with VAD to avoid warning
     agent_session = AgentSession[UserData](
@@ -379,6 +358,5 @@ async def entrypoint(ctx: JobContext):
     # Try enabling the camera for later use
     try:
         await userdata.visual_processor.enable_camera(ctx.room)
-        logger.info("Pre-enabled camera in entrypoint")
     except Exception as e:
         logger.error(f"Failed to pre-enable camera: {e}") 

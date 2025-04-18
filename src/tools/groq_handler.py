@@ -5,10 +5,14 @@ Groq Handler Module - Optimized for the visually impaired assistance
 import os
 import base64
 import io
+import logging
 import time
 from PIL import Image
 from groq import Groq
 from src.config import get_config
+
+# Simple logger without custom handler, will use root logger's config
+logger = logging.getLogger("groq-handler")
 
 class GroqHandler:
     """Streamlined handler for Groq API integration."""
@@ -24,12 +28,11 @@ class GroqHandler:
         
         os.environ["GROQ_API_KEY"] = self.api_key
         self.client = Groq(api_key=self.api_key)
-        print(f"[LOG] Groq handler initialized with model: {self.model_id}")
     
     async def load_model(self):
         """Verify API connection with a simple test."""
         if not self.api_key:
-            print("[ERROR] Groq API key not set")
+            # Error handling silently
             self.is_ready = False
             return
             
@@ -41,7 +44,7 @@ class GroqHandler:
             )
             self.is_ready = True
         except Exception as e:
-            print(f"[ERROR] Failed to connect to Groq API: {e}")
+            # Handle error silently
             self.is_ready = False
     
     async def process_image(self, image, query: str) -> str:
@@ -49,7 +52,6 @@ class GroqHandler:
         if not self.is_ready:
             return "Vision API not configured. Set GROQ_API_KEY in .env file."
         
-        print(f"[LOG] Using Groq API for vision: {self.model_id}")
         start_time = time.time()
         
         try:
@@ -81,11 +83,10 @@ class GroqHandler:
             )
             
             # Extract and return response
-            print(f"[LOG] Groq API completed in {time.time()-start_time:.1f}s")
             return completion.choices[0].message.content if completion.choices else "No response generated."
             
         except Exception as e:
-            print(f"[ERROR] Vision processing error: {str(e)}")
+            # Handle error silently
             return "Sorry, I encountered an error analyzing this image."
             
     async def _convert_image(self, image):
@@ -99,28 +100,23 @@ class GroqHandler:
             if hasattr(image, 'to_pil'):
                 try:
                     return image.to_pil()
-                except Exception as e:
-                    print(f"[ERROR] to_pil conversion failed: {e}")
+                except Exception:
+                    pass
                     
             # Use to_ndarray if available
             if hasattr(image, 'to_ndarray'):
                 try:
                     import numpy as np
                     return Image.fromarray(np.uint8(image.to_ndarray()))
-                except Exception as e:
-                    print(f"[ERROR] ndarray conversion failed: {e}")
+                except Exception:
+                    pass
             
             # Handle VideoFrame from LiveKit directly
             if hasattr(image, 'data') and hasattr(image, 'width') and hasattr(image, 'height'):
                 try:
                     # Get frame dimensions for debugging
                     data_len = len(image.data)
-                    frame_dims = f"width={image.width}, height={image.height}, data_len={data_len}"
-                    print(f"[INFO] Processing frame with {frame_dims}")
-                    
-                    # Detect format based on data size
                     bytes_per_pixel = data_len / (image.width * image.height)
-                    print(f"[INFO] Bytes per pixel: {bytes_per_pixel}")
                     
                     # Convert raw frame data - support RGB and YUV formats
                     import numpy as np
@@ -129,17 +125,15 @@ class GroqHandler:
                     if 1.4 < bytes_per_pixel < 1.6:
                         try:
                             import cv2
-                            print("[INFO] Using YUV conversion")
                             yuv = np.frombuffer(image.data, dtype=np.uint8)
                             yuv = yuv.reshape((image.height * 3 // 2, image.width))
                             bgr = cv2.cvtColor(yuv, cv2.COLOR_YUV2BGR_I420)
                             return Image.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
-                        except Exception as yuv_error:
-                            print(f"[ERROR] YUV conversion failed: {yuv_error}")
+                        except Exception:
+                            pass
                     
                     # Try direct RGB conversion (3 or 4 bytes per pixel) 
                     elif 2.9 < bytes_per_pixel < 4.1:
-                        print("[INFO] Using RGB/RGBA conversion")
                         channels = round(bytes_per_pixel)
                         img_array = np.frombuffer(image.data, dtype=np.uint8)
                         img_array = img_array.reshape((image.height, image.width, channels))
@@ -152,39 +146,33 @@ class GroqHandler:
                     
                     # Unknown format - try various approaches
                     else:
-                        print(f"[WARNING] Unknown image format with {bytes_per_pixel} bytes per pixel")
-                        
                         # Try single plane format (grayscale)
                         if 0.9 < bytes_per_pixel < 1.1:
-                            print("[INFO] Trying grayscale conversion")
                             gray = np.frombuffer(image.data, dtype=np.uint8)
                             gray = gray.reshape((image.height, image.width))
                             return Image.fromarray(gray, mode='L')
                         
                         # Try RGB with stride considerations
                         try:
-                            print("[INFO] Trying RGB with stride calculation")
                             stride = data_len // image.height
                             img_array = np.frombuffer(image.data, dtype=np.uint8)
                             img_array = img_array.reshape((image.height, stride // 3, 3))
                             img_array = img_array[:, :image.width, :]
                             return Image.fromarray(img_array)
-                        except Exception as stride_error:
-                            print(f"[ERROR] Stride-based conversion failed: {stride_error}")
+                        except Exception:
+                            pass
                 
-                except Exception as e:
-                    print(f"[ERROR] Frame data conversion failed: {e}")
+                except Exception:
+                    pass
                 
             # Last resort - try PIL's own methods
             try:
                 return Image.frombytes('RGB', (image.width, image.height), image.data)
-            except Exception as pil_error:
-                print(f"[ERROR] PIL frombytes failed: {pil_error}")
+            except Exception:
+                pass
                     
-            print(f"[ERROR] No conversion method worked for image type: {type(image)}")
             return None
-        except Exception as e:
-            print(f"[ERROR] Image conversion failed: {e}")
+        except Exception:
             return None
             
     def _optimize_image(self, image, target_mb=3.5):

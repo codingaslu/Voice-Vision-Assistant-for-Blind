@@ -9,8 +9,8 @@ from livekit.agents.llm.chat_context import ChatContext, ImageContent
 from livekit.plugins import openai
 from PIL import Image
 
+# Simple logger without custom handler, will use root logger's config
 logger = logging.getLogger("visual-processor")
-logger.setLevel(logging.INFO)
 
 class VisualProcessor:
     """
@@ -96,7 +96,6 @@ class VisualProcessor:
             
             # Get the video track
             video_track = await self.get_video_track(room)
-            logger.info(f"Got video track: {video_track.sid}")
             
             # Clear the buffer
             self._frames_buffer = []
@@ -106,8 +105,6 @@ class VisualProcessor:
                 frame = event.frame
                 self._frames_buffer.append(frame)
                 self.latest_frame = frame  # Update the latest frame
-                
-                logger.info(f"Captured frame {len(self._frames_buffer)}/{self._buffer_size}")
                 
                 # Once we have enough frames, select the best one
                 if len(self._frames_buffer) >= self._buffer_size:
@@ -133,7 +130,6 @@ class VisualProcessor:
         - Brightness/contrast optimization
         - Content analysis
         """
-        logger.info("Selecting best frame from buffer")
         return self._frames_buffer[-1]
     
     def get_latest_frame(self) -> Optional[Image.Image]:
@@ -185,7 +181,6 @@ class VisualProcessor:
             direct_llm = openai.LLM(model="gpt-4o")
             
             # Get the response
-            logger.info("Getting analysis from LLM")
             start_time = time.time()
             response_text = ""
             async with direct_llm.chat(chat_ctx=chat_ctx) as stream:
@@ -194,7 +189,7 @@ class VisualProcessor:
                         response_text += chunk.delta.content
             
             elapsed = time.time() - start_time
-            logger.info(f"LLM generated response in {elapsed:.2f}s: {response_text[:100]}...")
+            logger.info(f"Analysis complete in {elapsed:.1f}s")
             
             # Store the response for potential fallback
             self._last_response = response_text
@@ -215,7 +210,7 @@ class VisualProcessor:
         Returns:
             Enhanced analysis from Groq
         """
-        logger.info("Using Groq fallback for better image analysis")
+        logger.info("Using Groq fallback")
         
         # Check if we have an image to process
         if self.latest_frame is None:
@@ -237,7 +232,6 @@ class VisualProcessor:
             
             # Process image with Groq
             groq_response = await self._groq_handler.process_image(self.latest_frame, query)
-            logger.info(f"Groq API response: {groq_response[:100]}...")
             
             return groq_response
             
@@ -259,7 +253,7 @@ class VisualProcessor:
         Returns:
             Tuple of (analysis_text, used_fallback)
         """
-        logger.info(f"Capturing and analyzing image with query: {query}")
+        logger.info(f"Processing visual query: {query[:30]}...")
         
         try:
             # Capture frame
@@ -289,7 +283,7 @@ class VisualProcessor:
             
             # Use Groq fallback if necessary
             if need_fallback:
-                logger.info("Detected potential limitations in OpenAI response, using Groq fallback")
+                logger.info("Using Groq fallback due to limitation detection")
                 groq_response = await self.groq_fallback(openai_response)
                 return groq_response, True
             else:
