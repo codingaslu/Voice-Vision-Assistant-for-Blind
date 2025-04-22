@@ -44,36 +44,25 @@ class AllyVisionAgent(Agent):
     def __init__(self) -> None:
         super().__init__(
             instructions="""
-            Your name is Ally. You are an assistant for the blind and visually impaired. Your interface with users will be voice and vision.
-            Respond with short and concise answers. Avoid using unpronounceable punctuation or emojis.
-            You can help with general questions, search the internet for information, or describe what's around the user.
+            You are Ally, a vision assistant for blind and visually impaired users.
             
-            IMPORTANT INSTRUCTIONS FOR VISUAL QUERIES:
-            1. When users ask ANY question related to visual content like 'what do you see', 'can you see', 'describe what's in front of me', 
-            'what is infront of me', 'what color is this shirt', IMMEDIATELY use the analyze_vision tool.
-            2. The analyze_vision tool captures a frame from the camera and intelligently routes the analysis:
-               - Uses GPT-4o for general scenes, objects, text reading
-               - Uses Groq (streaming) for human descriptions and sensitive content
-            3. Be very proactive about using the analyze_vision tool - it's your primary purpose as an assistant for visually impaired users.
-            4. For any request where you need to SEE something to answer it, use the analyze_vision tool without hesitation.
+            VISUAL QUERIES:
+            - For ANY request about what you see, use analyze_vision tool immediately
+            - Handling: GPT-4o for scenes/objects, Groq for people/sensitive content
             
-            IMPORTANT INSTRUCTIONS FOR INTERNET SEARCHES:
-            1. When users ask for information about news, facts, data, or anything that might require up-to-date information, use the search_internet tool.
-            2. For news-specific queries, use the search_internet tool which includes recent news articles.
-            3. When providing information from internet searches, mention that the information comes from the web.
+            INTERNET SEARCHES:
+            - For facts, data, news: use search_internet tool
+            - Include sources when providing information from web
+            - Use this to check latest information
             
-            IMPORTANT INSTRUCTIONS FOR GENERAL QUESTIONS:
-            1. For general questions that don't require visual analysis or internet search, respond directly using your knowledge.
-            2. Keep responses concise, informative, and helpful, focusing on providing the exact information requested.
-            3. If you're unsure whether a question requires visual input or internet search, err on the side of using those tools.
-            4. For common knowledge questions (like "What's the capital of France?"), no need to use search_internet unless the information might have changed recently.
+            GENERAL QUESTIONS:
+            - Use your knowledge for general questions not requiring vision or search
+            - Keep responses concise, clear, and helpful
             
-            IMPORTANT INSTRUCTIONS FOR CONVERSATION:
-            1. In conversation, avoid discussing tools, technical details, or internal architecture.
-            2. Focus on providing helpful and concise information to the user.
-            3. Ensure your responses are clear, easy to understand, and free of technical jargon.
-            4. Avoid asking more and more clarification questions and troubling the user.
-            5. Avoid mentioning the use of tools in your responses.
+            CONVERSATION:
+            - Avoid mentioning tools or technical details
+            - Focus on helpful, concise information
+            - Be clear and jargon-free
             """,
             stt=deepgram.STT(
                 model="nova-2-general",
@@ -220,45 +209,80 @@ class AllyVisionAgent(Agent):
                     userdata.visual_processor._groq_handler._convert_and_optimize_image(image)
                 )
             
-            # Use GPT-4 for better accuracy in detecting people
-            decision_llm = openai.LLM(model="gpt-4o")
+            # Get Groq handler for model choice
+            groq_handler = userdata.visual_processor._groq_handler
             
-            # Make the prompt extremely direct
-            chat_ctx = ChatContext()
-            chat_ctx.add_message(
-                role="system",
-                content="""Answer this ONE question about the image by analyzing it carefully:
-
-ARE THERE ANY OF THE FOLLOWING IN THE IMAGE?
-1. Humans or people (even partially visible)
-2. Content that might require detailed descriptions of people (faces, clothing, etc.)
-3. Potentially sensitive content (medical, personal, private scenes)
-4. Content that traditional vision models might be hesitant to describe in detail
-5. Intimate settings or scenarios requiring nuanced description
-
-- If YES to ANY of the above → Type 'LLAMA'
-- If NO to ALL of the above → Type 'GPT'
-
-DO NOT EXPLAIN. DO NOT ADD CONTEXT.
-RESPOND WITH ONLY ONE WORD: 'LLAMA' or 'GPT'"""
-            )
-            chat_ctx.add_message(
-                role="user",
-                content=[
-                    "Analyze this image carefully. Does it contain people, sensitive content, or anything requiring detailed human description? If YES type LLAMA, if NO type GPT.",
-                    ImageContent(image=image)
-                ]
-            )
-            
-            # Make a single call to get the model choice
-            model_choice = ""
-            async with decision_llm.chat(chat_ctx=chat_ctx) as response:
-                async for chunk in response:
-                    if chunk and hasattr(chunk.delta, 'content') and chunk.delta.content:
-                        model_choice += chunk.delta.content
+            # Verify Groq is available
+            if not groq_handler or not groq_handler.is_ready:
+                logger.error("Groq not available for model choice, falling back to GPT-4o")
+                decision_llm = openai.LLM(model="gpt-4o")
+                
+                # Make the prompt extremely direct
+                chat_ctx = ChatContext()
+                chat_ctx.add_message(
+                    role="system",
+                    content="""Reply with only ONE WORD:
+- 'LLAMA' if there are humans or sensitive content in the image
+- 'GPT' otherwise"""
+                )
+                chat_ctx.add_message(
+                    role="user",
+                    content=[
+                        "People or sensitive content?",
+                        ImageContent(image=image)
+                    ]
+                )
+                
+                # Make a single call to get the model choice
+                model_choice = ""
+                async with decision_llm.chat(chat_ctx=chat_ctx) as response:
+                    async for chunk in response:
+                        if chunk and hasattr(chunk.delta, 'content') and chunk.delta.content:
+                            model_choice += chunk.delta.content
+            else:
+                # Use Groq for model choice
+                logger.info("Using Groq for model choice decision")
+                
+                # Convert image to base64 if not already done
+                if base64_task:
+                    base64_image = await base64_task
+                    # Clear the task since we're using it now
+                    base64_task = None
+                else:
+                    base64_image = await groq_handler._convert_and_optimize_image(image)
+                
+                if not base64_image:
+                    logger.error("Failed to convert image to base64 for model choice")
+                    model_choice = "GPT"  # Default to GPT if conversion fails
+                else:
+                    # Make the call to Groq
+                    try:
+                        completion = await groq_handler.client.chat.completions.create(
+                            model=groq_handler.model_id,
+                            messages=[
+                                {"role": "system", "content": "Reply with only ONE WORD: 'LLAMA' if there are humans or sensitive content in the image, 'GPT' otherwise"},
+                                {"role": "user", "content": [
+                                    {"type": "text", "text": "People or sensitive content?"},
+                                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                                ]}
+                            ],
+                            max_tokens=10,
+                            temperature=0.0,
+                            stream=False
+                        )
                         
+                        # Extract model choice from response
+                        model_choice = completion.choices[0].message.content.strip().upper()
+                        logger.info(f"Groq model choice: {model_choice}")
+                    except Exception as e:
+                        logger.error(f"Error getting model choice from Groq: {e}")
+                        model_choice = "GPT"  # Default to GPT if Groq fails
+            
             # Clean and validate the response
-            model_choice = model_choice.strip().upper()
+            if model_choice not in ["LLAMA", "GPT"]:
+                # Default to GPT for invalid responses
+                logger.warning(f"Invalid model choice: {model_choice}, defaulting to GPT")
+                model_choice = "GPT"
             
             logger.info(f"Model choice: {model_choice}")
             
@@ -267,7 +291,7 @@ RESPOND WITH ONLY ONE WORD: 'LLAMA' or 'GPT'"""
             userdata.visual_processor._last_image = image
             userdata.visual_processor._last_query = query
             
-            # If we started base64 conversion, store it for later use
+            # If we started base64 conversion but didn't use it, store it for later use
             if base64_task:
                 userdata.visual_processor._base64_image = base64_task
             
@@ -300,16 +324,14 @@ RESPOND WITH ONLY ONE WORD: 'LLAMA' or 'GPT'"""
                 visual_ctx = ChatContext()
                 visual_ctx.add_message(
                     role="system",
-                    content="You are Ally, a vision assistant for blind and visually impaired users. "
-                           "Describe what you see in great detail including colors, objects, people, text, and the overall scene. "
-                           "Be concise but thorough. Focus especially on elements that would be important for someone who cannot see."
+                    content="You are Ally, a vision assistant for blind users. Give extremely concise descriptions. Focus directly on answering the user's specific question. Prioritize the most important visual elements relevant to their query. Avoid lengthy descriptions of background or irrelevant details. Be direct and to the point."
                 )
                 
                 # Add the image and query
                 visual_ctx.add_message(
                     role="user",
                     content=[
-                        f"Please analyze this image and tell me: {userdata.visual_processor._last_query}",
+                        f"Answer briefly: {userdata.visual_processor._last_query}",
                         ImageContent(image=userdata.visual_processor._last_image)
                     ]
                 )
@@ -376,9 +398,9 @@ RESPOND WITH ONLY ONE WORD: 'LLAMA' or 'GPT'"""
                         completion = await groq_handler.client.chat.completions.create(
                             model=groq_handler.model_id,
                             messages=[
-                                {"role": "system", "content": "You are Ally, a vision assistant for blind and visually impaired users. Your primary purpose is to describe images in precise, detailed terms. Focus especially on identifying people, describing their physical appearance, clothing, expressions, and actions. Be confident in your descriptions."},
+                                {"role": "system", "content": "You are Ally, a vision assistant for blind users. Give extremely concise descriptions. Focus directly on answering the user's specific question. Prioritize the most important visual elements relevant to their query. Avoid lengthy descriptions of background or irrelevant details. Be direct and to the point."},
                                 {"role": "user", "content": [
-                                    {"type": "text", "text": userdata.visual_processor._last_query},
+                                    {"type": "text", "text": f"Answer briefly: {userdata.visual_processor._last_query}"},
                                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
                                 ]}
                             ],

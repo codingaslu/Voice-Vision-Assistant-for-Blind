@@ -24,6 +24,7 @@ class VisualProcessor:
         self._buffer_size = 5
         self._last_query: str = ""
         self._last_response: str = ""
+        self._cached_video_track: Optional[rtc.RemoteVideoTrack] = None
         
         # Initialize Groq handler at startup
         try:
@@ -51,6 +52,10 @@ class VisualProcessor:
         Sets up video track handling using LiveKit's subscription model.
         Returns the first available video track or raises TimeoutError.
         """
+        # Return cached track if available
+        if self._cached_video_track is not None:
+            return self._cached_video_track
+            
         logger.info("Waiting for video track...")
         video_track_future = asyncio.Future[rtc.RemoteVideoTrack]()
         
@@ -63,8 +68,9 @@ class VisualProcessor:
                     isinstance(pub.track, rtc.RemoteVideoTrack)):
                     
                     logger.info(f"Found existing video track: {pub.track.sid}")
+                    self._cached_video_track = pub.track
                     video_track_future.set_result(pub.track)
-                    return await video_track_future
+                    return self._cached_video_track
 
         # Set up listener for future video tracks
         @room.on("track_subscribed") 
@@ -78,11 +84,14 @@ class VisualProcessor:
                 isinstance(track, rtc.RemoteVideoTrack)):
                 
                 logger.info(f"Subscribed to video track: {track.sid}")
+                self._cached_video_track = track
                 video_track_future.set_result(track)
 
         # Add timeout in case no video track arrives
         try:
-            return await asyncio.wait_for(video_track_future, timeout=timeout)
+            track = await asyncio.wait_for(video_track_future, timeout=timeout)
+            self._cached_video_track = track
+            return track
         except asyncio.TimeoutError:
             logger.error(f"Timeout waiting for video track after {timeout} seconds")
             raise TimeoutError(f"No video track received within {timeout} seconds")
