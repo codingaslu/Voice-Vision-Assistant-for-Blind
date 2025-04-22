@@ -27,6 +27,7 @@ class UserData:
     current_tool: str = "general"  #  tool: "visual" or "internet"
     last_query: str = ""
     last_response: str = ""
+    groq_fallback_used: bool = False  # Flag to track if Groq fallback was already used
     visual_processor: Optional[VisualProcessor] = None
     internet_search: Optional[InternetSearch] = None
     room_ctx: Optional[JobContext] = None  # Store JobContext for room access
@@ -53,13 +54,11 @@ class AllyVisionAgent(Agent):
             4. For any request where you need to SEE something to answer it, use the see_and_describe tool without hesitation.
             
             IMPORTANT INSTRUCTIONS FOR GROQ FALLBACK:
-            1. After using see_and_describe, if your response contains phrases like 'I can't identify', 'cannot recognize', 'unable to tell who', 
-            or if you're unable to describe people in the image, IMMEDIATELY call the use_groq_fallback tool.
-            2. The use_groq_fallback tool will provide a more detailed analysis, especially for identifying people.
-            3. ALWAYS use use_groq_fallback when your analysis has limitations, especially regarding people identification.
-            4. If you find yourself responding with phrases like 'I can't identify', 'unable to determine', or similar limitations about the current image, 
-            PROACTIVELY use the use_groq_fallback tool with your current response BEFORE sending it to the user.
-            5. This applies not just to initial image analysis but to ALL follow-up questions about the same image.
+            1. The system has two ways of using Groq fallback: automatic and manual. Automatic fallback happens when certain limitations are detected in responses.
+            2. ONLY call the use_groq_fallback tool if the automatic fallback was NOT already applied (you will know this from the response - if it already has detailed descriptions of people, environment, etc.)
+            3. DO NOT call use_groq_fallback if the see_and_describe response already mentions something like "I'm using enhanced analysis" or "With enhanced vision capabilities" or provides very detailed person descriptions.
+            4. When you call use_groq_fallback, it should be ONLY when the default vision system gave a limited analysis with phrases like "I can't identify", "cannot recognize".
+            5. To avoid duplicate processing, check if the response seems to have already used enhanced analysis before calling use_groq_fallback.
             
             IMPORTANT INSTRUCTIONS FOR INTERNET SEARCHES:
             1. When users ask for information about news, facts, data, or anything that might require up-to-date information, use the search_internet tool.
@@ -124,6 +123,9 @@ class AllyVisionAgent(Agent):
         
         # Reset to general mode for each new query unless overridden by a tool
         userdata.current_tool = "general"
+        
+        # Reset fallback flag for each new query
+        userdata.groq_fallback_used = False
         
         await super().on_message(text)
     
@@ -230,6 +232,11 @@ class AllyVisionAgent(Agent):
             userdata.last_query = query
             userdata.last_response = response
             
+            # Set the flag if automatic fallback was used
+            userdata.groq_fallback_used = used_fallback
+            if used_fallback:
+                logger.info("Automatic Groq fallback was used")
+            
             # Switch back to general mode after completing visual analysis
             userdata.current_tool = "general"
             
@@ -250,6 +257,12 @@ class AllyVisionAgent(Agent):
         This is useful when the initial analysis couldn't identify people or other important details.
         """
         userdata = context.userdata
+        
+        # Check if fallback already used for this query
+        if userdata.groq_fallback_used:
+            logger.info("Skipping function Groq fallback as automatic fallback was already used")
+            return original_response  # Return the original response which should already be enhanced
+        
         logger.info("Using Groq fallback")
         
         # Check if we have a visual processor
@@ -270,6 +283,9 @@ class AllyVisionAgent(Agent):
         
         # Store the enhanced response
         userdata.last_response = enhanced_response
+        
+        # Mark that we've used Groq fallback
+        userdata.groq_fallback_used = True
         
         # Switch back to general mode after Groq fallback
         userdata.current_tool = "general"
