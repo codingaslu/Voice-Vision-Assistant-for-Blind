@@ -91,9 +91,6 @@ class VisualProcessor:
         """Capture a single best frame from the video track."""
         logger.info("Capturing frame...")
         try:
-            # Enable camera first
-            await self.enable_camera(room)
-            
             # Get the video track
             video_track = await self.get_video_track(room)
             
@@ -122,14 +119,7 @@ class VisualProcessor:
             return None
     
     async def _select_best_frame(self) -> Image.Image:
-        """
-        Select the best frame from the buffer.
-        Currently returns the most recent frame, but this could be enhanced with:
-        - Blur detection
-        - Face detection
-        - Brightness/contrast optimization
-        - Content analysis
-        """
+        """Select the best frame from the buffer."""
         return self._frames_buffer[-1]
     
     def get_latest_frame(self) -> Optional[Image.Image]:

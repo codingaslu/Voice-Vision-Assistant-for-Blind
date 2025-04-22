@@ -12,7 +12,7 @@ from livekit.agents import WorkerOptions, cli
 # Import main entrypoint function
 from src.main import entrypoint
 
-# Configure optimized logging (all in one block)
+# Configure optimized logging 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', handlers=[logging.StreamHandler(sys.stdout)])
 for log_module in ["livekit", "livekit.agents"]: logging.getLogger(log_module).setLevel(logging.ERROR)
 for log_module in ["livekit.plugins", "livekit.rtc", "primp", "httpx"]: logging.getLogger(log_module).setLevel(logging.WARNING)
