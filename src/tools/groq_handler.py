@@ -32,7 +32,7 @@ class GroqHandler:
         # Set up Groq client
         os.environ["GROQ_API_KEY"] = self.api_key
         self.client = AsyncGroq(api_key=self.api_key)
-        self.is_ready = True  # Will be verified on first use
+        self.is_ready = True  
         self._verified = False
     
     async def verify_connection(self):
