@@ -227,11 +227,17 @@ class AllyVisionAgent(Agent):
             chat_ctx = ChatContext()
             chat_ctx.add_message(
                 role="system",
-                content="""Answer this ONE question about the image:
+                content="""Answer this ONE question about the image by analyzing it carefully:
 
-ARE THERE ANY HUMANS OR PEOPLE IN THE IMAGE?
-- If YES (even partially visible) → Type 'LLAMA'
-- If NO → Type 'GPT'
+ARE THERE ANY OF THE FOLLOWING IN THE IMAGE?
+1. Humans or people (even partially visible)
+2. Content that might require detailed descriptions of people (faces, clothing, etc.)
+3. Potentially sensitive content (medical, personal, private scenes)
+4. Content that traditional vision models might be hesitant to describe in detail
+5. Intimate settings or scenarios requiring nuanced description
+
+- If YES to ANY of the above → Type 'LLAMA'
+- If NO to ALL of the above → Type 'GPT'
 
 DO NOT EXPLAIN. DO NOT ADD CONTEXT.
 RESPOND WITH ONLY ONE WORD: 'LLAMA' or 'GPT'"""
@@ -239,7 +245,7 @@ RESPOND WITH ONLY ONE WORD: 'LLAMA' or 'GPT'"""
             chat_ctx.add_message(
                 role="user",
                 content=[
-                    "Are there any humans or people in this image? Remember: If YES type LLAMA, if NO type GPT.",
+                    "Analyze this image carefully. Does it contain people, sensitive content, or anything requiring detailed human description? If YES type LLAMA, if NO type GPT.",
                     ImageContent(image=image)
                 ]
             )
@@ -470,4 +476,4 @@ async def entrypoint(ctx: JobContext):
         agent=processor_agent,
         room=ctx.room,
         room_input_options=RoomInputOptions(),
-    ) 
+    )
