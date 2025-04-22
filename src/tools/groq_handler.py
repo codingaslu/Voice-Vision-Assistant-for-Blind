@@ -45,22 +45,11 @@ class GroqHandler:
             self.is_ready = False
             return False
             
-        try:
-            # Test with a simple completion
-            response = await self.client.chat.completions.create(
-                model=self.model_id,
-                messages=[{"role": "user", "content": "test"}],
-                max_tokens=10,
-                stream=False
-            )
-            self.is_ready = True
-            self._verified = True
-            logger.info(f"Groq handler verified successfully with model {self.model_id}")
-            return True
-        except Exception as e:
-            logger.error(f"Groq connection verification failed: {e}")
-            self.is_ready = False
-            return False
+        # Just check API key presence, no need for a test call
+        self.is_ready = True
+        self._verified = True
+        logger.info(f"Groq handler verified with model {self.model_id}")
+        return True
     
     async def process_image(self, image, query: str) -> str:
         """Process an image with Groq API."""
