@@ -129,13 +129,12 @@ class GroqHandler:
                     )
             
             if not got_any_content:
-                error_msg = "No content received from Groq stream"
-                logger.error(error_msg)
+                logger.error("No content received from Groq stream")
                 yield ChatChunk(
                     id=f"groqcmpl-{time.time()}",
                     delta=ChoiceDelta(
                         role="assistant",
-                        content=error_msg,
+                        content="No content received from Groq stream",
                         tool_calls=[]
                     ),
                     usage=None

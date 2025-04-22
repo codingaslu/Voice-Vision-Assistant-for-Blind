@@ -352,7 +352,8 @@ RESPOND WITH ONLY ONE WORD: 'LLAMA' or 'GPT'"""
                                 yield {"delta": {"content": error_msg}}
                                 return
                         
-                        logger.info("Converting image to base64...")
+                        # Convert image to base64
+                        logger.info("Processing Groq vision analysis...")
                         # Use pre-converted base64 image if available
                         if hasattr(userdata.visual_processor, '_base64_image'):
                             base64_image = await userdata.visual_processor._base64_image
@@ -365,7 +366,6 @@ RESPOND WITH ONLY ONE WORD: 'LLAMA' or 'GPT'"""
                         if not base64_image:
                             raise ValueError("Failed to convert image to base64")
                         
-                        logger.info("Creating Groq completion...")
                         # Stream the response from Groq
                         completion = await groq_handler.client.chat.completions.create(
                             model=groq_handler.model_id,
@@ -382,12 +382,11 @@ RESPOND WITH ONLY ONE WORD: 'LLAMA' or 'GPT'"""
                             stream=True
                         )
                         
-                        logger.info("Starting to process Groq stream...")
                         # Process the streaming response using the handler
                         async for chunk in groq_handler.stream_response(completion):
                             yield chunk
                         
-                        logger.info("Finished processing Groq stream")
+                        logger.info("Groq vision analysis completed")
                                     
                     except Exception as e:
                         error_msg = f"Error using Groq for analysis: {str(e)}"
