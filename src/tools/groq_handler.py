@@ -23,9 +23,11 @@ class GroqHandler:
         """Initialize the Groq API handler with minimal setup."""
         config = get_config()
         self.api_key = config["GROQ_API_KEY"]
-        self.model_id = "meta-llama/llama-4-scout-17b-16e-instruct"  # Set default model
-        self.max_tokens = config.get("MAX_TOKENS", 1024)
-        self.temperature = config.get("TEMPERATURE", 0.7)
+        self.model_id = config["GROQ_MODEL_ID"]
+        self.max_tokens = config["MAX_TOKENS"]
+        self.temperature = config["TEMPERATURE"]
+        
+        logger.info(f"Initializing Groq handler with model: {self.model_id}")
         
         # Set up Groq client
         os.environ["GROQ_API_KEY"] = self.api_key
@@ -53,7 +55,7 @@ class GroqHandler:
             )
             self.is_ready = True
             self._verified = True
-            logger.info("Groq handler verified successfully")
+            logger.info(f"Groq handler verified successfully with model {self.model_id}")
             return True
         except Exception as e:
             logger.error(f"Groq connection verification failed: {e}")
@@ -87,6 +89,7 @@ class GroqHandler:
                 temperature=self.temperature,
                 stream=True
             )
+            logger.info(f"Created Groq completion with model {self.model_id}, max_tokens={self.max_tokens}, temp={self.temperature}")
             return completion
             
         except Exception as e:
