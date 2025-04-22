@@ -221,14 +221,17 @@ class AllyVisionAgent(Agent):
                 chat_ctx = ChatContext()
                 chat_ctx.add_message(
                     role="system",
-                    content="""Reply with only ONE WORD:
-- 'LLAMA' if there are humans or sensitive content in the image
-- 'GPT' otherwise"""
+                    content="""You are making a simple binary classification:
+
+- If the image contains ANY humans, people, faces, or sensitive content → respond with EXACTLY 'LLAMA'
+- If the image ONLY contains objects, landscapes, animals, plants, or text → respond with EXACTLY 'GPT'
+
+DO NOT ADD ANY EXPLANATION. ONLY RESPOND WITH THE SINGLE WORD 'LLAMA' OR 'GPT'."""
                 )
                 chat_ctx.add_message(
                     role="user",
                     content=[
-                        "People or sensitive content?",
+                        "Does this image contain any humans or sensitive content? If yes, reply only with 'LLAMA'. If no, reply only with 'GPT'.",
                         ImageContent(image=image)
                     ]
                 )
@@ -260,9 +263,14 @@ class AllyVisionAgent(Agent):
                         completion = await groq_handler.client.chat.completions.create(
                             model=groq_handler.model_id,
                             messages=[
-                                {"role": "system", "content": "Reply with only ONE WORD: 'LLAMA' if there are humans or sensitive content in the image, 'GPT' otherwise"},
+                                {"role": "system", "content": """You are making a simple binary classification:
+
+- If the image contains ANY humans, people, faces, or sensitive content → respond with EXACTLY 'LLAMA'
+- If the image ONLY contains objects, landscapes, animals, plants, or text → respond with EXACTLY 'GPT'
+
+DO NOT ADD ANY EXPLANATION. ONLY RESPOND WITH THE SINGLE WORD 'LLAMA' OR 'GPT'."""},
                                 {"role": "user", "content": [
-                                    {"type": "text", "text": "People or sensitive content?"},
+                                    {"type": "text", "text": "Does this image contain any humans or sensitive content? If yes, reply only with 'LLAMA'. If no, reply only with 'GPT'."},
                                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
                                 ]}
                             ],
