@@ -50,12 +50,12 @@ class AllyVisionAgent(Agent):
             
             IMPORTANT INSTRUCTIONS FOR VISUAL QUERIES:
             1. When users ask ANY question related to visual content like 'what do you see', 'can you see', 'describe what's in front of me', 
-            'what is infront of me', 'what color is this shirt', IMMEDIATELY use the see_and_describe tool.
-            2. The see_and_describe tool captures a frame from the camera and intelligently routes the analysis:
+            'what is infront of me', 'what color is this shirt', IMMEDIATELY use the analyze_vision tool.
+            2. The analyze_vision tool captures a frame from the camera and intelligently routes the analysis:
                - Uses GPT-4o for general scenes, objects, text reading
                - Uses Groq (streaming) for human descriptions and sensitive content
-            3. Be very proactive about using the see_and_describe tool - it's your primary purpose as an assistant for visually impaired users.
-            4. For any request where you need to SEE something to answer it, use the see_and_describe tool without hesitation.
+            3. Be very proactive about using the analyze_vision tool - it's your primary purpose as an assistant for visually impaired users.
+            4. For any request where you need to SEE something to answer it, use the analyze_vision tool without hesitation.
             
             IMPORTANT INSTRUCTIONS FOR INTERNET SEARCHES:
             1. When users ask for information about news, facts, data, or anything that might require up-to-date information, use the search_internet tool.
@@ -168,34 +168,25 @@ class AllyVisionAgent(Agent):
             return f"I encountered an error while searching for information about '{query}': {str(e)}"
     
     @function_tool()
-    async def see_and_describe(
+    async def analyze_vision(
         self,
         context: RunContext_T,
         query: Annotated[str, Field(description="What aspects of the image to analyze - will be routed to GPT-4o for general scenes or Groq for human/sensitive content")]
     ) -> str:
         """
-        Capture an image from the camera and analyze it based on the user's query.
-        Uses GPT-4o for general scene descriptions and object identification.
-        Uses Groq (streaming) for detailed human descriptions and potentially sensitive content.
-        The choice between models is made by analyzing both the query and image content.
+        Capture and analyze visual information from the camera.
+        
+        This tool:
+        1. Captures a current frame from the camera
+        2. Intelligently routes analysis to the appropriate model:
+           - GPT-4o for general scenes, objects, text reading
+           - Groq (Llama model) for human descriptions and sensitive content
+        3. Provides a detailed description of what's visible
+        
+        Use this for any request where visual information is needed.
         """
         userdata = context.userdata
         
-        # Handle empty query by using last_query or a default
-        if not query or query.strip() == "":
-            if userdata.last_query:
-                # Extract just the question without any command words
-                last_query = userdata.last_query.lower().strip()
-                
-                # Check if it's just a command like "see" without a specific question
-                if last_query in ["see", "look", "view", "camera"]:
-                    query = "What can you see in this image? Describe everything visible in detail."
-                else:
-                    # Keep the user's actual query
-                    query = userdata.last_query
-            else:
-                query = "What can you see in this image? Describe everything visible in detail."
-                
         logger.info(f"Visual analysis: {query[:30]}...")
         
         try:
@@ -278,8 +269,8 @@ RESPOND WITH ONLY ONE WORD: 'LLAMA' or 'GPT'"""
             return "Processing visual analysis..."
             
         except Exception as e:
-            logger.error(f"Error in see_and_describe: {e}")
-            return f"I encountered an error while trying to see and analyze what's in front of me: {str(e)}"
+            logger.error(f"Error in analyze_vision: {e}")
+            return f"I encountered an error while trying to analyze what's in front of me: {str(e)}"
     
     
     async def llm_node(self, chat_ctx, tools, model_settings=None):
