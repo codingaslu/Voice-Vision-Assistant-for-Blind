@@ -285,9 +285,7 @@ class VisualProcessor:
             if need_fallback:
                 logger.info("Using Groq fallback due to limitation detection")
                 groq_response = await self.groq_fallback(openai_response)
-                # Add a marker to indicate enhanced analysis was used
-                enhanced_response = "Using enhanced vision analysis: " + groq_response
-                return enhanced_response, True
+                return groq_response, True
             else:
                 return openai_response, False
             
