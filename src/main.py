@@ -227,6 +227,10 @@ class AllyVisionAgent(Agent):
             userdata.visual_processor._last_image = image
             userdata.visual_processor._last_query = query
             
+            # Initialize chunks array and callback for streaming
+            userdata.visual_processor._gpt_chunks = []
+            userdata.visual_processor._add_chunk_callback = None
+            
             # If model choice is GPT, start preparing the GPT analysis context in parallel
             if model_choice == "GPT":
                 # Log the query explicitly
@@ -251,25 +255,39 @@ class AllyVisionAgent(Agent):
                 # Initialize LLM for analysis
                 analysis_llm = openai.LLM(model="gpt-4o")
                 
-                # Start the GPT-4o analysis in parallel
+                # Start the GPT-4o analysis in parallel with streaming support
                 async def run_gpt_analysis():
                     try:
-                        # Get the user's query
-                        user_query = query  # Use the query parameter passed to analyze_vision
-                                                
-                        logger.info(f"Running async GPT analysis with query: {user_query[:30]}...")
+                        logger.info(f"Running async GPT analysis with query: {query[:30]}...")
                         
-                        response_text = ""
+                        # Initialize the analysis_complete flag to False
+                        userdata.visual_processor._analysis_complete = False
+                        
                         async with analysis_llm.chat(chat_ctx=visual_ctx) as stream:
                             async for chunk in stream:
                                 if chunk and hasattr(chunk.delta, 'content') and chunk.delta.content:
-                                    response_text += chunk.delta.content
-                        # Store the complete analysis for immediate use in llm_node
-                        userdata.visual_processor._gpt_analysis = response_text
+                                    content = chunk.delta.content
+                                    
+                                    # Store the chunk for immediate access
+                                    userdata.visual_processor._gpt_chunks.append(content)
+                                    
+                                    # If there's an active callback, send the chunk immediately
+                                    if hasattr(userdata.visual_processor, '_add_chunk_callback') and userdata.visual_processor._add_chunk_callback:
+                                        await userdata.visual_processor._add_chunk_callback(content)
+                        
+                        # Set the analysis_complete flag to True
+                        userdata.visual_processor._analysis_complete = True
                         logger.info("Asynchronous GPT analysis completed")
                     except Exception as e:
                         logger.error(f"Error in async GPT analysis: {e}")
-                        userdata.visual_processor._gpt_analysis = None
+                        # Add error message as a chunk if callback exists
+                        error_msg = f"Error processing image: {str(e)}"
+                        userdata.visual_processor._gpt_chunks.append(error_msg)
+                        if hasattr(userdata.visual_processor, '_add_chunk_callback') and userdata.visual_processor._add_chunk_callback:
+                            await userdata.visual_processor._add_chunk_callback(error_msg)
+                        
+                        # Set the analysis_complete flag to True even on error
+                        userdata.visual_processor._analysis_complete = True
                 
                 # Start analysis without awaiting
                 asyncio.create_task(run_gpt_analysis())
@@ -300,70 +318,56 @@ class AllyVisionAgent(Agent):
                 
                 # Choose model based on the decision
                 if userdata.visual_processor._model_choice == "GPT":
-                    # Check if we already have the GPT analysis result from async call
-                    if (hasattr(userdata.visual_processor, '_gpt_analysis') and 
-                        userdata.visual_processor._gpt_analysis is not None):
-                        
-                        logger.info("Using pre-computed GPT analysis result")
-                        analysis_text = userdata.visual_processor._gpt_analysis
-                        # Clear the stored analysis
-                        userdata.visual_processor._gpt_analysis = None
-                        
-                        # Create a proper ChatChunk with the analysis
-                        chunk = ChatChunk(
-                            id=f"gptcmpl-{time.time()}",
-                            delta=ChoiceDelta(
-                                role="assistant",
-                                content=analysis_text
-                            ),
-                            usage=None
-                        )
-                        yield chunk
-                        
-                        # Store the full response
-                        full_response = analysis_text
-                    else:
-                        # Use GPT for analysis with the saved context
-                        visual_ctx = ChatContext()
-                        visual_ctx.add_message(
-                            role="system",
-                            content="You are Ally, a vision assistant for blind users. Give extremely concise descriptions. Focus directly on answering the user's specific question. Prioritize the most important visual elements relevant to their query. Avoid lengthy descriptions of background or irrelevant details. Be direct and to the point."
-                        )
-                        
-                        # Add the image and query
-                        visual_ctx.add_message(
-                            role="user",
-                            content=[
-                                f"Answer briefly: {userdata.visual_processor._last_query}",
-                                ImageContent(image=userdata.visual_processor._last_image)
-                            ]
-                        )
-                        
-                        analysis_llm = openai.LLM(model="gpt-4o")
-                        
-                        # Stream the analysis
-                        async with analysis_llm.chat(chat_ctx=visual_ctx) as stream:
-                            async for chunk in stream:
-                                if chunk is None:
-                                    continue
+                    # Initialize a queue to store the chunks as they arrive
+                    chunk_queue = asyncio.Queue()
+                    processing_done = asyncio.Event()
+                    
+                    # Set up a callback to add chunks to the queue as they arrive
+                    async def add_chunk_to_queue(content):
+                        await chunk_queue.put(content)
+                    
+                    # Check if we have partial results available
+                    if hasattr(userdata.visual_processor, '_gpt_chunks') and userdata.visual_processor._gpt_chunks:
+                        # Add existing chunks to the queue
+                        for chunk in userdata.visual_processor._gpt_chunks:
+                            await chunk_queue.put(chunk)
+                    
+                    # Set up a task to update the _gpt_chunks callback
+                    userdata.visual_processor._add_chunk_callback = add_chunk_to_queue
+                    
+                    # Process chunks as they arrive
+                    try:
+                        while not processing_done.is_set() or not chunk_queue.empty():
+                            try:
+                                # Get a chunk with a timeout to avoid blocking forever
+                                chunk = await asyncio.wait_for(chunk_queue.get(), timeout=0.1)
+                                full_response += chunk
                                 
-                                # Extract content from chunk
-                                content = getattr(chunk.delta, 'content', None) if hasattr(chunk, 'delta') else str(chunk)
-                                
-                                if content is None:
-                                    yield chunk
-                                    continue
-                                
-                                # Append to full response
-                                full_response += content
-                                
-                                # Update the chunk with processed content
-                                if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'content'):
-                                    chunk.delta.content = content
-                                else:
-                                    chunk = content
-                                
-                                yield chunk
+                                # Create a proper ChatChunk with the chunk content
+                                yield ChatChunk(
+                                    id=f"gptcmpl-{time.time()}",
+                                    delta=ChoiceDelta(
+                                        role="assistant",
+                                        content=chunk
+                                    ),
+                                    usage=None
+                                )
+                            except asyncio.TimeoutError:
+                                # Check if analysis is complete
+                                if hasattr(userdata.visual_processor, '_analysis_complete') and userdata.visual_processor._analysis_complete:
+                                    if chunk_queue.empty():
+                                        processing_done.set()
+                                # No chunk available yet, continue waiting
+                                continue
+                    except Exception as e:
+                        logger.error(f"Error processing GPT chunks: {e}")
+                    finally:
+                        # Clean up
+                        processing_done.set()
+                        userdata.visual_processor._add_chunk_callback = None
+                        if hasattr(userdata.visual_processor, '_gpt_chunks'):
+                            userdata.visual_processor._gpt_chunks = []
+                    
                 else:  # LLAMA via Groq
                     # Use the pre-generated Groq analysis
                     if (hasattr(userdata.visual_processor, '_groq_analysis') and 
