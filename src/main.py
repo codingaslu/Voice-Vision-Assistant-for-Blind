@@ -247,7 +247,7 @@ class AllyVisionAgent(Agent):
                 if error:
                     logger.error(f"Error from model_choice_with_analysis: {error}")
                     model_choice = "GPT"  # Default to GPT on error
-        except Exception as e:
+            except Exception as e:
                 logger.error(f"Unexpected error from Groq handler: {e}")
                 model_choice = "GPT"  # Default to GPT on unexpected errors
                 groq_analysis = ""
