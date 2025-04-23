@@ -192,7 +192,40 @@ class AllyVisionAgent(Agent):
             if image is None:
                 return "Failed to capture an image from the camera."
             
-            # Get Groq handler
+            # Store image and query for later use
+            userdata.visual_processor._last_image = image
+            userdata.visual_processor._last_query = query
+            
+            # Initialize chunks array and callback for streaming
+            userdata.visual_processor._gpt_chunks = []
+            userdata.visual_processor._add_chunk_callback = None
+            userdata.visual_processor._analysis_complete = False
+            
+            # Start preparing GPT context IMMEDIATELY - don't wait for Groq decision
+            # Create chat context for GPT
+            visual_ctx = ChatContext()
+            visual_ctx.add_message(
+                role="system",
+                content="You are Ally, a vision assistant for blind users. Give extremely concise descriptions. Focus directly on answering the user's specific question. Prioritize the most important visual elements relevant to their query. Avoid lengthy descriptions of background or irrelevant details. Be direct and to the point."
+            )
+            
+            # Add the image and query
+            visual_ctx.add_message(
+                role="user",
+                content=[
+                    f"Answer briefly: {query}",
+                    ImageContent(image=image)
+                ]
+            )
+            
+            # Initialize LLM for analysis - do this early
+            analysis_llm = openai.LLM(model="gpt-4o")
+            
+            # Store prepared context for fast access if needed
+            userdata.visual_processor._prepared_context = visual_ctx
+            userdata.visual_processor._prepared_llm = analysis_llm
+            
+            # Now, in parallel with context preparation, get Groq handler
             groq_handler = userdata.visual_processor._groq_handler
             
             # Check if Groq handler is None and initialize if needed
@@ -224,36 +257,11 @@ class AllyVisionAgent(Agent):
             # Store the decision and analysis in userdata for llm_node to use
             userdata.visual_processor._model_choice = model_choice
             userdata.visual_processor._groq_analysis = groq_analysis
-            userdata.visual_processor._last_image = image
-            userdata.visual_processor._last_query = query
             
-            # Initialize chunks array and callback for streaming
-            userdata.visual_processor._gpt_chunks = []
-            userdata.visual_processor._add_chunk_callback = None
-            
-            # If model choice is GPT, start preparing the GPT analysis context in parallel
+            # If model choice is GPT, start the analysis with our pre-prepared context
             if model_choice == "GPT":
                 # Log the query explicitly
-                logger.info(f"Preparing GPT-4o analysis with query: '{query}'")
-                
-                # Create chat context for GPT
-                visual_ctx = ChatContext()
-                visual_ctx.add_message(
-                    role="system",
-                    content="You are Ally, a vision assistant for blind users. Give extremely concise descriptions. Focus directly on answering the user's specific question. Prioritize the most important visual elements relevant to their query. Avoid lengthy descriptions of background or irrelevant details. Be direct and to the point."
-                )
-                
-                # Add the image and query
-                visual_ctx.add_message(
-                    role="user",
-                    content=[
-                        f"Answer briefly: {query}",
-                        ImageContent(image=image)
-                    ]
-                )
-                
-                # Initialize LLM for analysis
-                analysis_llm = openai.LLM(model="gpt-4o")
+                logger.info(f"Starting GPT-4o analysis with query: '{query}' using prepared context")
                 
                 # Start the GPT-4o analysis in parallel with streaming support
                 async def run_gpt_analysis():
@@ -263,6 +271,7 @@ class AllyVisionAgent(Agent):
                         # Initialize the analysis_complete flag to False
                         userdata.visual_processor._analysis_complete = False
                         
+                        # Use our pre-prepared context
                         async with analysis_llm.chat(chat_ctx=visual_ctx) as stream:
                             async for chunk in stream:
                                 if chunk and hasattr(chunk.delta, 'content') and chunk.delta.content:
