@@ -13,6 +13,7 @@ from livekit.agents.voice import Agent, AgentSession, RunContext
 from livekit.agents.voice.room_io import RoomInputOptions
 from livekit.plugins import deepgram, openai, elevenlabs, silero
 from livekit.agents.llm.chat_context import ChatContext, ImageContent
+from livekit.agents.llm.llm import ChatChunk, ChoiceDelta
 
 # Import the tools
 from .tools.visual import VisualProcessor
@@ -29,7 +30,6 @@ class UserData:
     current_tool: str = "general"  #  tool: "visual" or "internet"
     last_query: str = ""
     last_response: str = ""
-    groq_fallback_used: bool = False  # Flag to track if Groq fallback was already used
     visual_processor: Optional[VisualProcessor] = None
     internet_search: Optional[InternetSearch] = None
     room_ctx: Optional[JobContext] = None  # Store JobContext for room access
@@ -103,23 +103,17 @@ class AllyVisionAgent(Agent):
         # Reset to general mode for each new query unless overridden by a tool
         userdata.current_tool = "general"
         
-        # Reset fallback flag for each new query
-        userdata.groq_fallback_used = False
-        
         await super().on_message(text)
-    
     
     @function_tool()
     async def search_internet(
         self,
         context: RunContext_T,
-        query: Annotated[str, Field(description="The search query to look up information on the web")]
+        query: Annotated[str, Field(description="Search query for the web")]
     ) -> str:
         """
-        Search the internet for information. Use this when the user asks for
-        facts, information, or data that might require up-to-date information.
-        This tool provides comprehensive results including general information,
-        detailed results with links, and recent news articles on the topic.
+        Search for up-to-date information on the web.
+        Provides results with source links.
         """
         userdata = context.userdata
         
@@ -160,19 +154,15 @@ class AllyVisionAgent(Agent):
     async def analyze_vision(
         self,
         context: RunContext_T,
-        query: Annotated[str, Field(description="What aspects of the image to analyze - will be routed to GPT-4o for general scenes or Groq for human/sensitive content")]
+        query: Annotated[str, Field(description="Query about the visual scene to analyze")]
     ) -> str:
         """
-        Capture and analyze visual information from the camera.
+        Capture and analyze the current scene.
         
-        This tool:
-        1. Captures a current frame from the camera
-        2. Intelligently routes analysis to the appropriate model:
-           - GPT-4o for general scenes, objects, text reading
-           - Groq (Llama model) for human descriptions and sensitive content
-        3. Provides a detailed description of what's visible
-        
-        Use this for any request where visual information is needed.
+        Uses a single API call to:
+        1. Classify if humans are present (routes to LLAMA) or not (routes to GPT-4o)
+        2. Get analysis for humans directly from Groq
+        3. Preload GPT context for non-human scenes
         """
         userdata = context.userdata
         
@@ -202,106 +192,48 @@ class AllyVisionAgent(Agent):
             if image is None:
                 return "Failed to capture an image from the camera."
             
-            # Start base64 conversion early
-            base64_task = None
-            if userdata.visual_processor._groq_handler:
-                base64_task = asyncio.create_task(
-                    userdata.visual_processor._groq_handler._convert_and_optimize_image(image)
-                )
-            
-            # Get Groq handler for model choice
+            # Get Groq handler
             groq_handler = userdata.visual_processor._groq_handler
             
-            # Verify Groq is available
-            if not groq_handler or not groq_handler.is_ready:
-                logger.error("Groq not available for model choice, falling back to GPT-4o")
-                decision_llm = openai.LLM(model="gpt-4o")
-                
-                # Make the prompt extremely direct
-                chat_ctx = ChatContext()
-                chat_ctx.add_message(
+            # Get model choice and analysis in a single call
+            model_choice, groq_analysis, error = await groq_handler.model_choice_with_analysis(image, query)
+            
+            if error:
+                logger.error(f"Error from model_choice_with_analysis: {error}")
+                model_choice = "GPT"  # Default to GPT on error
+            
+            logger.info(f"Model choice: {model_choice}")
+            
+            # Store the decision and analysis in userdata for llm_node to use
+            userdata.visual_processor._model_choice = model_choice
+            userdata.visual_processor._groq_analysis = groq_analysis
+            userdata.visual_processor._last_image = image
+            userdata.visual_processor._last_query = query
+            
+            # If model choice is GPT, start preparing the GPT analysis context in parallel
+            if model_choice == "GPT":
+                # Create chat context for GPT
+                visual_ctx = ChatContext()
+                visual_ctx.add_message(
                     role="system",
-                    content="""You are making a simple binary classification:
-
-- If the image contains ANY humans, people, faces, or sensitive content → respond with EXACTLY 'LLAMA'
-- If the image ONLY contains objects, landscapes, animals, plants, or text → respond with EXACTLY 'GPT'
-
-DO NOT ADD ANY EXPLANATION. ONLY RESPOND WITH THE SINGLE WORD 'LLAMA' OR 'GPT'."""
+                    content="You are Ally, a vision assistant for blind users. Give extremely concise descriptions. Focus directly on answering the user's specific question. Prioritize the most important visual elements relevant to their query. Avoid lengthy descriptions of background or irrelevant details. Be direct and to the point."
                 )
-                chat_ctx.add_message(
+                
+                # Add the image and query
+                visual_ctx.add_message(
                     role="user",
                     content=[
-                        "Does this image contain any humans or sensitive content? If yes, reply only with 'LLAMA'. If no, reply only with 'GPT'.",
+                        f"Answer briefly: {query}",
                         ImageContent(image=image)
                     ]
                 )
                 
-                # Make a single call to get the model choice
-                model_choice = ""
-                async with decision_llm.chat(chat_ctx=chat_ctx) as response:
-                    async for chunk in response:
-                        if chunk and hasattr(chunk.delta, 'content') and chunk.delta.content:
-                            model_choice += chunk.delta.content
-            else:
-                # Use Groq for model choice
-                logger.info("Using Groq for model choice decision")
+                # Store the prepared context
+                userdata.visual_processor._gpt_context = visual_ctx
                 
-                # Convert image to base64 if not already done
-                if base64_task:
-                    base64_image = await base64_task
-                    # Clear the task since we're using it now
-                    base64_task = None
-                else:
-                    base64_image = await groq_handler._convert_and_optimize_image(image)
-                
-                if not base64_image:
-                    logger.error("Failed to convert image to base64 for model choice")
-                    model_choice = "GPT"  # Default to GPT if conversion fails
-                else:
-                    # Make the call to Groq
-                    try:
-                        completion = await groq_handler.client.chat.completions.create(
-                            model=groq_handler.model_id,
-                            messages=[
-                                {"role": "system", "content": """You are making a simple binary classification:
-
-- If the image contains ANY humans, people, faces, or sensitive content → respond with EXACTLY 'LLAMA'
-- If the image ONLY contains objects, landscapes, animals, plants, or text → respond with EXACTLY 'GPT'
-
-DO NOT ADD ANY EXPLANATION. ONLY RESPOND WITH THE SINGLE WORD 'LLAMA' OR 'GPT'."""},
-                                {"role": "user", "content": [
-                                    {"type": "text", "text": "Does this image contain any humans or sensitive content? If yes, reply only with 'LLAMA'. If no, reply only with 'GPT'."},
-                                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-                                ]}
-                            ],
-                            max_tokens=10,
-                            temperature=0.0,
-                            stream=False
-                        )
-                        
-                        # Extract model choice from response
-                        model_choice = completion.choices[0].message.content.strip().upper()
-                        logger.info(f"Groq model choice: {model_choice}")
-                    except Exception as e:
-                        logger.error(f"Error getting model choice from Groq: {e}")
-                        model_choice = "GPT"  # Default to GPT if Groq fails
-            
-            # Clean and validate the response
-            if model_choice not in ["LLAMA", "GPT"]:
-                # Default to GPT for invalid responses
-                logger.warning(f"Invalid model choice: {model_choice}, defaulting to GPT")
-                model_choice = "GPT"
-            
-            logger.info(f"Model choice: {model_choice}")
-            
-            # Store the decision in userdata for llm_node to use
-            userdata.visual_processor._model_choice = model_choice
-            userdata.visual_processor._last_image = image
-            userdata.visual_processor._last_query = query
-            
-            # If we started base64 conversion but didn't use it, store it for later use
-            if base64_task:
-                userdata.visual_processor._base64_image = base64_task
+                # Also initialize LLM to avoid startup time in llm_node
+                analysis_llm = openai.LLM(model="gpt-4o")
+                userdata.visual_processor._gpt_llm = analysis_llm
             
             # Return a placeholder - actual analysis will happen in llm_node
             return "Processing visual analysis..."
@@ -309,7 +241,6 @@ DO NOT ADD ANY EXPLANATION. ONLY RESPOND WITH THE SINGLE WORD 'LLAMA' OR 'GPT'."
         except Exception as e:
             logger.error(f"Error in analyze_vision: {e}")
             return f"I encountered an error while trying to analyze what's in front of me: {str(e)}"
-    
     
     async def llm_node(self, chat_ctx, tools, model_settings=None):
         """Override llm_node to modify the output before sending to TTS"""
@@ -328,25 +259,35 @@ DO NOT ADD ANY EXPLANATION. ONLY RESPOND WITH THE SINGLE WORD 'LLAMA' OR 'GPT'."
                 hasattr(userdata.visual_processor, '_model_choice') and 
                 userdata.visual_processor._model_choice):
                 
-                # Create a new chat context for visual analysis
-                visual_ctx = ChatContext()
-                visual_ctx.add_message(
-                    role="system",
-                    content="You are Ally, a vision assistant for blind users. Give extremely concise descriptions. Focus directly on answering the user's specific question. Prioritize the most important visual elements relevant to their query. Avoid lengthy descriptions of background or irrelevant details. Be direct and to the point."
-                )
-                
-                # Add the image and query
-                visual_ctx.add_message(
-                    role="user",
-                    content=[
-                        f"Answer briefly: {userdata.visual_processor._last_query}",
-                        ImageContent(image=userdata.visual_processor._last_image)
-                    ]
-                )
-                
                 # Choose model based on the decision
                 if userdata.visual_processor._model_choice == "GPT":
-                    analysis_llm = openai.LLM(model="gpt-4o")  # Use GPT-4o for general analysis
+                    # Use preloaded context and LLM if available
+                    if (hasattr(userdata.visual_processor, '_gpt_context') and 
+                        hasattr(userdata.visual_processor, '_gpt_llm')):
+                        visual_ctx = userdata.visual_processor._gpt_context
+                        analysis_llm = userdata.visual_processor._gpt_llm
+                        
+                        # Clear stored context and LLM
+                        userdata.visual_processor._gpt_context = None
+                        userdata.visual_processor._gpt_llm = None
+                    else:
+                        # If not preloaded, create them now
+                        visual_ctx = ChatContext()
+                        visual_ctx.add_message(
+                            role="system",
+                            content="You are Ally, a vision assistant for blind users. Give extremely concise descriptions. Focus directly on answering the user's specific question. Prioritize the most important visual elements relevant to their query. Avoid lengthy descriptions of background or irrelevant details. Be direct and to the point."
+                        )
+                        
+                        # Add the image and query
+                        visual_ctx.add_message(
+                            role="user",
+                            content=[
+                                f"Answer briefly: {userdata.visual_processor._last_query}",
+                                ImageContent(image=userdata.visual_processor._last_image)
+                            ]
+                        )
+                        
+                        analysis_llm = openai.LLM(model="gpt-4o")  # Use GPT-4o for general analysis
                     
                     # Stream the analysis
                     async with analysis_llm.chat(chat_ctx=visual_ctx) as stream:
@@ -375,64 +316,46 @@ DO NOT ADD ANY EXPLANATION. ONLY RESPOND WITH THE SINGLE WORD 'LLAMA' OR 'GPT'."
                             
                             yield chunk
                 else:  # LLAMA via Groq
-                    # Use Groq for LLAMA analysis
-                    try:
-                        # Get Groq client from the handler
-                        groq_handler = userdata.visual_processor._groq_handler
+                    # Use the pre-generated Groq analysis
+                    if (hasattr(userdata.visual_processor, '_groq_analysis') and 
+                        userdata.visual_processor._groq_analysis):
+                        logger.info("Using pre-generated Groq analysis")
+                        analysis_text = userdata.visual_processor._groq_analysis
+                        # Clear the stored analysis
+                        userdata.visual_processor._groq_analysis = None
                         
-                        # Verify Groq connection
-                        if not groq_handler.is_ready:
-                            if not await groq_handler.verify_connection():
-                                error_msg = "Groq connection not available. Please check your API key and connection."
-                                logger.error(error_msg)
-                                yield {"delta": {"content": error_msg}}
-                                return
-                        
-                        # Convert image to base64
-                        logger.info("Processing Groq vision analysis...")
-                        # Use pre-converted base64 image if available
-                        if hasattr(userdata.visual_processor, '_base64_image'):
-                            base64_image = await userdata.visual_processor._base64_image
-                            # Clear the stored task
-                            userdata.visual_processor._base64_image = None
-                        else:
-                            # Convert image to base64 if not already done
-                            base64_image = await groq_handler._convert_and_optimize_image(userdata.visual_processor._last_image)
-                        
-                        if not base64_image:
-                            raise ValueError("Failed to convert image to base64")
-                        
-                        # Stream the response from Groq
-                        completion = await groq_handler.client.chat.completions.create(
-                            model=groq_handler.model_id,
-                            messages=[
-                                {"role": "system", "content": "You are Ally, a vision assistant for blind users. Give extremely concise descriptions. Focus directly on answering the user's specific question. Prioritize the most important visual elements relevant to their query. Avoid lengthy descriptions of background or irrelevant details. Be direct and to the point."},
-                                {"role": "user", "content": [
-                                    {"type": "text", "text": f"Answer briefly: {userdata.visual_processor._last_query}"},
-                                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-                                ]}
-                            ],
-                            temperature=groq_handler.temperature,
-                            max_tokens=groq_handler.max_tokens,
-                            top_p=1,
-                            stream=True
+                        # Create a proper ChatChunk with the analysis
+                        chunk = ChatChunk(
+                            id=f"groqcmpl-{time.time()}",
+                            delta=ChoiceDelta(
+                                role="assistant",
+                                content=analysis_text
+                            ),
+                            usage=None
                         )
+                        yield chunk
                         
-                        # Process the streaming response using the handler
-                        async for chunk in groq_handler.stream_response(completion):
-                            yield chunk
-                        
-                        logger.info("Groq vision analysis completed")
-                                    
-                    except Exception as e:
-                        error_msg = f"Error using Groq for analysis: {str(e)}"
-                        logger.error(f"Groq error details: {str(e)}")
+                        # Store the full response
+                        full_response = analysis_text
+                        logger.info("Pre-generated Groq analysis delivered")
+                    else:
+                        error_msg = "No pre-generated Groq analysis available"
+                        logger.error(error_msg)
+                        # Create error chunk in proper format
+                        chunk = ChatChunk(
+                            id=f"groqcmpl-{time.time()}",
+                            delta=ChoiceDelta(
+                                role="assistant",
+                                content=error_msg
+                            ),
+                            usage=None
+                        )
+                        yield chunk
                         full_response = error_msg
-                        yield {"delta": {"content": error_msg}}
                 
-                # Store the response
+                # Store the response and reset model choice
                 userdata.last_response = full_response
-                userdata.visual_processor._model_choice = None  # Reset the choice
+                userdata.visual_processor._model_choice = None
                 return
             
             # For non-visual queries, use the standard LLM processing

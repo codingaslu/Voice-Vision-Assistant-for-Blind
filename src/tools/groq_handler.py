@@ -7,11 +7,10 @@ import base64
 import io
 import logging
 import time
-import asyncio
+import json
 from PIL import Image
 from groq import AsyncGroq
 from src.config import get_config
-from livekit.agents.llm.llm import ChatChunk, ChoiceDelta, CompletionUsage
 
 # Simple logger without custom handler, will use root logger's config
 logger = logging.getLogger("groq-handler")
@@ -51,109 +50,80 @@ class GroqHandler:
         logger.info(f"Groq handler verified with model {self.model_id}")
         return True
     
-    async def process_image(self, image, query: str) -> str:
-        """Process an image with Groq API."""
+    async def model_choice_with_analysis(self, image, query: str):
+        """
+        Make a model choice (LLAMA vs GPT) and get analysis in a single call.
+        
+        Args:
+            image: Image to analyze
+            query: User query about the image
+            
+        Returns:
+            Tuple of (model_choice, analysis, error)
+        """
         # Verify connection on first use
         if not self._verified:
             if not await self.verify_connection():
-                return "Vision API not configured or connection failed. Please check your API key."
+                return "GPT", "", "Vision API not configured or connection failed."
         
         try:
             # Convert image to base64
             base64_image = await self._convert_and_optimize_image(image)
             if not base64_image:
-                return "Couldn't process this image format."
+                logger.error("Failed to convert image to base64")
+                return "GPT", "", "Failed to process the image."
             
-            # Call API with image and query
+            # Make the call to Groq - Use JSON mode to get both decision and analysis
             completion = await self.client.chat.completions.create(
                 model=self.model_id,
                 messages=[
-                    {"role": "system", "content": "You are Ally, a vision assistant for blind and visually impaired users. Your primary purpose is to describe images in precise, detailed terms. Focus especially on identifying people, describing their physical appearance (age, gender, ethnicity, hair color/style, facial features), clothing, expressions, and actions. Provide detailed descriptions of the environment, objects, text, and spatial relationships. Be confident in your descriptions - visually impaired users rely on your detailed observations. Be concise but thorough, focusing on what's most important for someone who cannot see."},
+                    {"role": "system", "content": """Binary classifier for images. Respond in JSON format:
+
+IF image contains humans/faces → "LLAMA" + answer query
+IF NO humans/faces → "GPT" + empty string
+
+JSON format:
+{
+  "model_choice": "GPT" or "LLAMA",
+  "analysis": "" if GPT, answer if LLAMA
+}"""},
                     {"role": "user", "content": [
-                        {"type": "text", "text": query},
+                        {"type": "text", "text": f"Answer this query about the image in detail: {query}"},
                         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
                     ]}
                 ],
                 max_tokens=self.max_tokens,
-                temperature=self.temperature,
-                stream=True
+                temperature=0,
+                response_format={"type": "json_object"},
+                stream=False
             )
-            logger.info(f"Created Groq completion with model {self.model_id}, max_tokens={self.max_tokens}, temp={self.temperature}")
-            return completion
+            
+            # Extract both model choice and analysis from JSON response
+            response_json = completion.choices[0].message.content
+            
+            response_data = json.loads(response_json)
+            
+            model_choice = response_data.get("model_choice", "GPT").upper()
+            groq_analysis = ""
+            
+            # Only get analysis if model_choice is LLAMA
+            if model_choice == "LLAMA":
+                groq_analysis = response_data.get("analysis", "")
+            
+            logger.info(f"Model choice: {model_choice}, analysis available: {bool(groq_analysis)}")
+            
+            # Clean and validate the response
+            if model_choice not in ["LLAMA", "GPT"]:
+                # Default to GPT for invalid responses
+                logger.warning(f"Invalid model choice: {model_choice}, defaulting to GPT")
+                model_choice = "GPT"
+            
+            return model_choice, groq_analysis, None
             
         except Exception as e:
-            logger.error(f"Error in process_image: {e}")
-            return None
+            logger.error(f"Error in model_choice_with_analysis: {e}")
+            return "GPT", "", str(e)
 
-    async def stream_response(self, completion):
-        """Process streaming response from Groq and yield properly formatted ChatChunks."""
-        if completion is None:
-            yield ChatChunk(
-                id=f"groqcmpl-{time.time()}",
-                delta=ChoiceDelta(
-                    role="assistant",
-                    content="Error: No response from Groq API",
-                    tool_calls=[]
-                ),
-                usage=None
-            )
-            return
-
-        got_any_content = False
-        try:
-            async for chunk in completion:
-                if chunk.choices and chunk.choices[0].delta.content is not None:
-                    content = chunk.choices[0].delta.content
-                    got_any_content = True
-                    
-                    # Create a ChatChunk that matches GPT's format
-                    yield ChatChunk(
-                        id=f"groqcmpl-{time.time()}",
-                        delta=ChoiceDelta(
-                            role="assistant",
-                            content=content,
-                            tool_calls=[]
-                        ),
-                        usage=None
-                    )
-            
-            if not got_any_content:
-                logger.error("No content received from Groq stream")
-                yield ChatChunk(
-                    id=f"groqcmpl-{time.time()}",
-                    delta=ChoiceDelta(
-                        role="assistant",
-                        content="No content received from Groq stream",
-                        tool_calls=[]
-                    ),
-                    usage=None
-                )
-            
-            # Final chunk with usage stats
-            yield ChatChunk(
-                id=f"groqcmpl-{time.time()}",
-                delta=None,
-                usage=CompletionUsage(
-                    completion_tokens=0,
-                    prompt_tokens=0,
-                    total_tokens=0,
-                    cache_creation_tokens=0,
-                    cache_read_tokens=0
-                )
-            )
-            
-        except Exception as stream_error:
-            logger.error(f"Error during stream processing: {stream_error}")
-            yield ChatChunk(
-                id=f"groqcmpl-{time.time()}",
-                delta=ChoiceDelta(
-                    role="assistant",
-                    content=f"Error during stream processing: {str(stream_error)}",
-                    tool_calls=[]
-                ),
-                usage=None
-            )
-            
     async def _convert_and_optimize_image(self, image, target_mb=3.5):
         """Convert image to base64 string with size optimization."""
         try:
