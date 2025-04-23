@@ -27,7 +27,7 @@ class GroqHandler:
         self.temperature = config["TEMPERATURE"]
         
         logger.info(f"Initializing Groq handler with model: {self.model_id}")
-        
+    
         if not self.api_key:
             logger.error("No GROQ_API_KEY provided in configuration or environment variables")
             self.is_ready = False
@@ -38,8 +38,8 @@ class GroqHandler:
         try:
             os.environ["GROQ_API_KEY"] = self.api_key
             self.client = AsyncGroq(api_key=self.api_key)
-            self.is_ready = True  
-            self._verified = True  # Skip verification step by setting verified=True immediately
+            self.is_ready = True
+            self._verified = False
             logger.info("Groq client initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize Groq client: {e}")
@@ -77,9 +77,11 @@ class GroqHandler:
         if not self.is_ready:
             logger.error("Groq handler is not ready. Missing API key or initialization failed.")
             return "GPT", "", "Vision API not configured or connection failed."
-        
-        # No need to verify connection - this is now done at initialization
-        # This removes ~1.6s of delay
+            
+        # Verify connection on first use
+        if not self._verified:
+            if not await self.verify_connection():
+                return "GPT", "", "Vision API not configured or connection failed."
         
         try:
             # Convert image to base64
@@ -144,7 +146,7 @@ JSON format:
         try:
             # Convert to PIL Image if needed
             if not isinstance(image, Image.Image):
-                if hasattr(image, 'to_pil'):
+            if hasattr(image, 'to_pil'):
                     image = image.to_pil()
                 elif hasattr(image, 'to_ndarray'):
                     import numpy as np
@@ -155,8 +157,8 @@ JSON format:
                         import numpy as np
                         import cv2
                         
-                        data_len = len(image.data)
-                        bytes_per_pixel = data_len / (image.width * image.height)
+                    data_len = len(image.data)
+                    bytes_per_pixel = data_len / (image.width * image.height)
                         
                         if 1.4 < bytes_per_pixel < 1.6:  # YUV format
                             yuv = np.frombuffer(image.data, dtype=np.uint8)
@@ -164,33 +166,33 @@ JSON format:
                             bgr = cv2.cvtColor(yuv, cv2.COLOR_YUV2BGR_I420)
                             image = Image.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
                         elif 2.9 < bytes_per_pixel < 4.1:  # RGB/RGBA format
-                            channels = round(bytes_per_pixel)
-                            img_array = np.frombuffer(image.data, dtype=np.uint8)
-                            img_array = img_array.reshape((image.height, image.width, channels))
-                            if channels == 4:
-                                img_array = img_array[:, :, :3]
+                        channels = round(bytes_per_pixel)
+                        img_array = np.frombuffer(image.data, dtype=np.uint8)
+                        img_array = img_array.reshape((image.height, image.width, channels))
+                        if channels == 4:
+                            img_array = img_array[:, :, :3]
                             image = Image.fromarray(img_array)
-                        else:
-                            return None
-                    except Exception as e:
+                    else:
+            return None
+        except Exception as e:
                         logger.error(f"Error converting VideoFrame: {e}")
                         return None
                 else:
-                    return None
+            return None
             
             # Optimize image size if needed
-            buffer = io.BytesIO()
-            image.save(buffer, format="JPEG", quality=85)
-            size_mb = len(buffer.getvalue()) * 1.4 / (1024 * 1024)
-            
+        buffer = io.BytesIO()
+        image.save(buffer, format="JPEG", quality=85)
+        size_mb = len(buffer.getvalue()) * 1.4 / (1024 * 1024)
+        
             if size_mb > target_mb:
                 # Try reducing quality first
                 if size_mb <= target_mb * 1.2:  # If close to target, just reduce quality
-                    for quality in [75, 65, 55, 45]:
-                        buffer = io.BytesIO()
-                        image.save(buffer, format="JPEG", quality=quality)
-                        if len(buffer.getvalue()) * 1.4 / (1024 * 1024) <= target_mb:
-                            buffer.seek(0)
+            for quality in [75, 65, 55, 45]:
+                buffer = io.BytesIO()
+                image.save(buffer, format="JPEG", quality=quality)
+                if len(buffer.getvalue()) * 1.4 / (1024 * 1024) <= target_mb:
+                    buffer.seek(0)
                             image = Image.open(buffer)
                             break
                 else:  # Need to resize
