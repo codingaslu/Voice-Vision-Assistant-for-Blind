@@ -28,11 +28,23 @@ class GroqHandler:
         
         logger.info(f"Initializing Groq handler with model: {self.model_id}")
         
+        if not self.api_key:
+            logger.error("No GROQ_API_KEY provided in configuration or environment variables")
+            self.is_ready = False
+            self._verified = False
+            return
+            
         # Set up Groq client
-        os.environ["GROQ_API_KEY"] = self.api_key
-        self.client = AsyncGroq(api_key=self.api_key)
-        self.is_ready = True  
-        self._verified = False
+        try:
+            os.environ["GROQ_API_KEY"] = self.api_key
+            self.client = AsyncGroq(api_key=self.api_key)
+            self.is_ready = True  
+            self._verified = False
+            logger.info("Groq client initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize Groq client: {e}")
+            self.is_ready = False
+            self._verified = False
     
     async def verify_connection(self):
         """Verify the connection is working."""
@@ -61,6 +73,11 @@ class GroqHandler:
         Returns:
             Tuple of (model_choice, analysis, error)
         """
+        # Check if the handler is ready
+        if not self.is_ready:
+            logger.error("Groq handler is not ready. Missing API key or initialization failed.")
+            return "GPT", "", "Vision API not configured or connection failed."
+            
         # Verify connection on first use
         if not self._verified:
             if not await self.verify_connection():
@@ -79,7 +96,7 @@ class GroqHandler:
                 messages=[
                     {"role": "system", "content": """Binary classifier for images. Respond in JSON format:
 
-IF image contains humans/faces → "LLAMA" + answer query
+IF image contains humans/person/faces → "LLAMA" + answer query
 IF NO humans/faces → "GPT" + empty string
 
 JSON format:
@@ -123,7 +140,7 @@ JSON format:
         except Exception as e:
             logger.error(f"Error in model_choice_with_analysis: {e}")
             return "GPT", "", str(e)
-
+            
     async def _convert_and_optimize_image(self, image, target_mb=3.5):
         """Convert image to base64 string with size optimization."""
         try:

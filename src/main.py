@@ -195,12 +195,29 @@ class AllyVisionAgent(Agent):
             # Get Groq handler
             groq_handler = userdata.visual_processor._groq_handler
             
-            # Get model choice and analysis in a single call
-            model_choice, groq_analysis, error = await groq_handler.model_choice_with_analysis(image, query)
+            # Check if Groq handler is None and initialize if needed
+            if groq_handler is None:
+                try:
+                    # Initialize Groq handler on demand
+                    from src.tools.groq_handler import GroqHandler
+                    userdata.visual_processor._groq_handler = GroqHandler()
+                    groq_handler = userdata.visual_processor._groq_handler
+                    logger.info("Initialized Groq handler on demand")
+                except Exception as e:
+                    logger.error(f"Failed to initialize Groq handler: {e}")
+                    return "I'm having trouble with the vision system. Please try again."
             
-            if error:
-                logger.error(f"Error from model_choice_with_analysis: {error}")
-                model_choice = "GPT"  # Default to GPT on error
+            # Get model choice and analysis in a single call
+            try:
+                model_choice, groq_analysis, error = await groq_handler.model_choice_with_analysis(image, query)
+                
+                if error:
+                    logger.error(f"Error from model_choice_with_analysis: {error}")
+                    model_choice = "GPT"  # Default to GPT on error
+            except Exception as e:
+                logger.error(f"Unexpected error from Groq handler: {e}")
+                model_choice = "GPT"  # Default to GPT on unexpected errors
+                groq_analysis = ""
             
             logger.info(f"Model choice: {model_choice}")
             
@@ -212,6 +229,9 @@ class AllyVisionAgent(Agent):
             
             # If model choice is GPT, start preparing the GPT analysis context in parallel
             if model_choice == "GPT":
+                # Log the query explicitly
+                logger.info(f"Preparing GPT-4o analysis with query: '{query}'")
+                
                 # Create chat context for GPT
                 visual_ctx = ChatContext()
                 visual_ctx.add_message(
@@ -228,12 +248,31 @@ class AllyVisionAgent(Agent):
                     ]
                 )
                 
-                # Store the prepared context
-                userdata.visual_processor._gpt_context = visual_ctx
-                
-                # Also initialize LLM to avoid startup time in llm_node
+                # Initialize LLM for analysis
                 analysis_llm = openai.LLM(model="gpt-4o")
-                userdata.visual_processor._gpt_llm = analysis_llm
+                
+                # Start the GPT-4o analysis in parallel
+                async def run_gpt_analysis():
+                    try:
+                        # Get the user's query
+                        user_query = query  # Use the query parameter passed to analyze_vision
+                                                
+                        logger.info(f"Running async GPT analysis with query: {user_query[:30]}...")
+                        
+                        response_text = ""
+                        async with analysis_llm.chat(chat_ctx=visual_ctx) as stream:
+                            async for chunk in stream:
+                                if chunk and hasattr(chunk.delta, 'content') and chunk.delta.content:
+                                    response_text += chunk.delta.content
+                        # Store the complete analysis for immediate use in llm_node
+                        userdata.visual_processor._gpt_analysis = response_text
+                        logger.info("Asynchronous GPT analysis completed")
+                    except Exception as e:
+                        logger.error(f"Error in async GPT analysis: {e}")
+                        userdata.visual_processor._gpt_analysis = None
+                
+                # Start analysis without awaiting
+                asyncio.create_task(run_gpt_analysis())
             
             # Return a placeholder - actual analysis will happen in llm_node
             return "Processing visual analysis..."
@@ -261,17 +300,30 @@ class AllyVisionAgent(Agent):
                 
                 # Choose model based on the decision
                 if userdata.visual_processor._model_choice == "GPT":
-                    # Use preloaded context and LLM if available
-                    if (hasattr(userdata.visual_processor, '_gpt_context') and 
-                        hasattr(userdata.visual_processor, '_gpt_llm')):
-                        visual_ctx = userdata.visual_processor._gpt_context
-                        analysis_llm = userdata.visual_processor._gpt_llm
+                    # Check if we already have the GPT analysis result from async call
+                    if (hasattr(userdata.visual_processor, '_gpt_analysis') and 
+                        userdata.visual_processor._gpt_analysis is not None):
                         
-                        # Clear stored context and LLM
-                        userdata.visual_processor._gpt_context = None
-                        userdata.visual_processor._gpt_llm = None
+                        logger.info("Using pre-computed GPT analysis result")
+                        analysis_text = userdata.visual_processor._gpt_analysis
+                        # Clear the stored analysis
+                        userdata.visual_processor._gpt_analysis = None
+                        
+                        # Create a proper ChatChunk with the analysis
+                        chunk = ChatChunk(
+                            id=f"gptcmpl-{time.time()}",
+                            delta=ChoiceDelta(
+                                role="assistant",
+                                content=analysis_text
+                            ),
+                            usage=None
+                        )
+                        yield chunk
+                        
+                        # Store the full response
+                        full_response = analysis_text
                     else:
-                        # If not preloaded, create them now
+                        # Use GPT for analysis with the saved context
                         visual_ctx = ChatContext()
                         visual_ctx.add_message(
                             role="system",
@@ -287,34 +339,31 @@ class AllyVisionAgent(Agent):
                             ]
                         )
                         
-                        analysis_llm = openai.LLM(model="gpt-4o")  # Use GPT-4o for general analysis
-                    
-                    # Stream the analysis
-                    async with analysis_llm.chat(chat_ctx=visual_ctx) as stream:
-                        async for chunk in stream:
-                            if chunk is None:
-                                continue
-                            
-                            # Extract content from chunk
-                            content = getattr(chunk.delta, 'content', None) if hasattr(chunk, 'delta') else str(chunk)
-                            
-                            if content is None:
+                        analysis_llm = openai.LLM(model="gpt-4o")
+                        
+                        # Stream the analysis
+                        async with analysis_llm.chat(chat_ctx=visual_ctx) as stream:
+                            async for chunk in stream:
+                                if chunk is None:
+                                    continue
+                                
+                                # Extract content from chunk
+                                content = getattr(chunk.delta, 'content', None) if hasattr(chunk, 'delta') else str(chunk)
+                                
+                                if content is None:
+                                    yield chunk
+                                    continue
+                                
+                                # Append to full response
+                                full_response += content
+                                
+                                # Update the chunk with processed content
+                                if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'content'):
+                                    chunk.delta.content = content
+                                else:
+                                    chunk = content
+                                
                                 yield chunk
-                                continue
-                            
-                            # Append to full response
-                            full_response += content
-                            
-                            # Process content based on the current tool
-                            processed_content = content
-                            
-                            # Update the chunk with processed content
-                            if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'content'):
-                                chunk.delta.content = processed_content
-                            else:
-                                chunk = processed_content
-                            
-                            yield chunk
                 else:  # LLAMA via Groq
                     # Use the pre-generated Groq analysis
                     if (hasattr(userdata.visual_processor, '_groq_analysis') and 
@@ -337,7 +386,6 @@ class AllyVisionAgent(Agent):
                         
                         # Store the full response
                         full_response = analysis_text
-                        logger.info("Pre-generated Groq analysis delivered")
                     else:
                         error_msg = "No pre-generated Groq analysis available"
                         logger.error(error_msg)
@@ -374,14 +422,11 @@ class AllyVisionAgent(Agent):
                     # Append to full response
                     full_response += content
                     
-                    # Process content based on the current tool
-                    processed_content = content
-                    
                     # Update the chunk with processed content
                     if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'content'):
-                        chunk.delta.content = processed_content
+                        chunk.delta.content = content
                     else:
-                        chunk = processed_content
+                        chunk = content
                     
                     yield chunk
             
