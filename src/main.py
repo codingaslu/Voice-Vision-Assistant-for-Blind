@@ -18,7 +18,6 @@ from livekit.agents.llm.llm import ChatChunk, ChoiceDelta
 # Import the tools
 from .tools.visual import VisualProcessor
 from .tools.internet_search import InternetSearch
-from .tools.google_places import PlacesSearch
 
 # Simple logger without custom handler, will use root logger's config
 logger = logging.getLogger("ally-vision-agent")
@@ -28,12 +27,11 @@ load_dotenv()
 
 @dataclass
 class UserData:
-    current_tool: str = "general"  #  tool: "visual" or "internet" or "places"
+    current_tool: str = "general"  #  tool: "visual" or "internet"
     last_query: str = ""
     last_response: str = ""
     visual_processor: Optional[VisualProcessor] = None
     internet_search: Optional[InternetSearch] = None
-    places_search: Optional[PlacesSearch] = None
     room_ctx: Optional[JobContext] = None  # Store JobContext for room access
 
 RunContext_T = RunContext[UserData]
@@ -56,10 +54,6 @@ class AllyVisionAgent(Agent):
             - For facts, data, news: use search_internet tool
             - Include sources when providing information from web
             - Use this to check latest information
-            
-            PLACES SEARCHES:
-            - For restaurants, businesses, points of interest: use search_places tool
-            - Help find locations, addresses, and business information
             
             GENERAL QUESTIONS:
             - Use your knowledge for general questions not requiring vision or search
@@ -95,10 +89,6 @@ class AllyVisionAgent(Agent):
         if userdata.internet_search is None:
             userdata.internet_search = InternetSearch()
             logger.info("Initialized internet search tool")
-            
-        if userdata.places_search is None:
-            userdata.places_search = PlacesSearch()
-            logger.info("Initialized places search tool")
         
         # Use session.say() to ensure the greeting is sent directly
         greeting = "Hi there! How can I help?"
@@ -318,45 +308,6 @@ class AllyVisionAgent(Agent):
             logger.error(f"Error in analyze_vision: {e}")
             return f"I encountered an error while trying to analyze what's in front of me: {str(e)}"
     
-    @function_tool()
-    async def search_places(
-        self,
-        context: RunContext_T,
-        query: Annotated[str, Field(description="Search query for places, businesses, restaurants, or points of interest")]
-    ) -> str:
-        """
-        Search for places, businesses, and points of interest.
-        Provides details like address, ratings, and opening hours.
-        """
-        userdata = context.userdata
-        
-        # Switch to places mode
-        userdata.current_tool = "places"
-        
-        # Ensure we have the places search tool
-        if userdata.places_search is None:
-            userdata.places_search = PlacesSearch()
-            logger.info("Created places search tool on demand")
-        
-        # Log the search query
-        logger.info(f"Searching places: {query[:30]}...")
-        
-        try:
-            # Perform places search
-            results = await userdata.places_search.search_places(query)
-            
-            # Store the response for future reference
-            userdata.last_response = results
-            
-            # Switch back to general mode after completing places search
-            userdata.current_tool = "general"
-            
-            return results
-            
-        except Exception as e:
-            logger.error(f"Error searching for places: {e}")
-            return f"I encountered an error while searching for places related to '{query}': {str(e)}"
-    
     async def llm_node(self, chat_ctx, tools, model_settings=None):
         """Override llm_node to modify the output before sending to TTS"""
         # Access the LLM directly from self instance
@@ -504,7 +455,6 @@ async def entrypoint(ctx: JobContext):
     userdata = UserData()
     userdata.visual_processor = VisualProcessor()
     userdata.internet_search = InternetSearch()
-    userdata.places_search = PlacesSearch()
     userdata.current_tool = "general"  # Explicitly set initial tool mode
     userdata.room_ctx = ctx  # Store the JobContext for room access
     

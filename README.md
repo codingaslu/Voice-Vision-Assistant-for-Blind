@@ -8,6 +8,7 @@ Envision AI is an advanced voice and vision assistant designed specifically for 
 
 The system uses a multi-component architecture to process user inputs and generate helpful responses:
 
+<!-- FLOWCHART IMAGE: Replace with your system architecture flowchart -->
 ```mermaid
 graph TD
     %% Main flow - simplified
@@ -17,7 +18,6 @@ graph TD
     %% Simplified branches
     QueryType -->|"Visual"| VisualProcess["Visual Analysis"]
     QueryType -->|"Search"| SearchProcess["Internet Search"]
-    QueryType -->|"Places"| PlacesProcess["Places Search"]
     QueryType -->|"General"| TextProcess["Direct Text Response"]
     
     %% Simplified visual path
@@ -25,15 +25,10 @@ graph TD
     ModelChoice -->|"GPT-4o"| GPTAnalysis["GPT Analysis Stream"]
     ModelChoice -->|"LLAMA"| LLAMAAnalysis["LLAMA Analysis"]
     
-    %% Places path
-    PlacesProcess --> GooglePlaces["Google Places API"]
-    GooglePlaces --> PlacesResults["Location Details"]
-    
     %% Output consolidation - simplified
     GPTAnalysis --> Response["TTS Processing"]
     LLAMAAnalysis --> Response
     SearchProcess --> Response
-    PlacesResults --> Response
     TextProcess --> Response
     Response --> Deliver["Voice Response to User"]
     
@@ -42,20 +37,17 @@ graph TD
     classDef process fill:#f6ffed,stroke:#52c41a,stroke-width:1px
     classDef decision fill:#fff7e6,stroke:#fa8c16,stroke-width:1px
     classDef output fill:#f9f0ff,stroke:#722ed1,stroke-width:1px
-    classDef api fill:#fff1f0,stroke:#f5222d,stroke-width:1px
     
     class User,Deliver interface
-    class Router,VisualProcess,GPTAnalysis,LLAMAAnalysis,SearchProcess,TextProcess,PlacesProcess process
+    class Router,VisualProcess,GPTAnalysis,LLAMAAnalysis,SearchProcess,TextProcess process
     class QueryType,ModelChoice decision
-    class Response,PlacesResults output
-    class GooglePlaces api
+    class Response output
 ```
-
 ## Key Features
 
 1. **Dual Vision Model Approach**
    - Primary analysis with OpenAI's GPT-4o
-   - Fallback to  Llama-4-Scout-17B for enhanced person detection
+   - Fallback to Groq's Llama-4-Scout-17B for enhanced person detection
    - Privacy-focused solution to describe people when primary model refuses
 
 2. **Response Streaming**
@@ -78,7 +70,6 @@ graph TD
    - **Voice Interaction**: Natural conversation with the assistant using speech
    - **Visual Understanding**: Camera-based vision to describe surroundings, including people
    - **Internet Search**: Real-time information lookup for current events and facts
-   - **Places Search**: Find information about restaurants, businesses, and points of interest
    - **Multi-component Integration**: Seamless coordination between vision, voice, and search tools
 
 ## Model Selection & Evaluation Criteria
@@ -138,8 +129,7 @@ Envision-AI-Assignment-main/
     └── tools/
         ├── visual.py       # Visual processing (camera, frames, image analysis)
         ├── groq_handler.py # Groq API integration for enhanced image analysis
-        ├── internet_search.py # Web search functionality
-        └── google_places.py # Places search using Google Places 
+        └── internet_search.py # Web search functionality
 
 ```
 
@@ -185,9 +175,6 @@ Envision-AI-Assignment-main/
    # Groq API configuration
    GROQ_API_KEY=your_groq_api_key  # Get your API key from https://console.groq.com/keys
    GROQ_MODEL_ID=meta-llama/llama-4-scout-17b-16e-instruct
-   
-   # Google Places API configuration
-   GPLACES_API_KEY=your_google_places_api_key  # Get your API key from Google Cloud Console https://console.cloud.google.com/google/maps-apis/credentials
    ```
 
 ### Running the Assistant
@@ -265,10 +252,10 @@ The Groq integration is optimized through:
 ## Future Improvements
 
 - Advanced image preprocessing for optimal quality
-- Enhanced Google Places integration for better location-based assistance
+- Google Map integration for location-based queries
 - Distance, weather, and time information in responses
 - Calendar integration for scheduling
-- QR code scanning
+- QR code generation and scanning
 - Enhanced caching for faster responses
 - Multi-image sequence processing for better context
 - More personalized voice options

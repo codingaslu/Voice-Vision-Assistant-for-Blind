@@ -19,6 +19,3 @@ duckduckgo-search
 groq
 # For image conversion
 opencv-python
-# For Google Places API integration
-langchain-google-community>=0.0.1
-googlemaps
