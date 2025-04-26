@@ -268,7 +268,7 @@ The Groq integration is optimized through:
 - Enhanced Google Places integration for better location-based assistance
 - Distance, weather, and time information in responses
 - Calendar integration for scheduling
-- QR code generation and scanning
+- QR code scanning
 - Enhanced caching for faster responses
 - Multi-image sequence processing for better context
 - More personalized voice options
