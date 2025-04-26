@@ -87,6 +87,5 @@ htmlcov/
 *api_key*
 *secret*
 # !.env  # Keep the example .env file
-.gitignore
 # Generated files
 conversation_log.txt .gitignore
