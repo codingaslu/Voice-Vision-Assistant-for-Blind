@@ -55,7 +55,7 @@ graph TD
 
 1. **Dual Vision Model Approach**
    - Primary analysis with OpenAI's GPT-4o
-   - Fallback to Groq's Llama-4-Scout-17B for enhanced person detection
+   - Fallback to  Llama-4-Scout-17B for enhanced person detection
    - Privacy-focused solution to describe people when primary model refuses
 
 2. **Response Streaming**
