@@ -1,6 +1,6 @@
 <div align="center">
 
-# ✨ Envision AI ✨
+# ✨ Ally Clone ✨
 
 ### An Advanced Voice & Vision Assistant for Blind and Visually Impaired Users
 
@@ -12,7 +12,7 @@
 
 ## 📋 Overview
 
-Envision AI combines cutting-edge speech recognition, natural language processing, and computer vision to create an intuitive assistant specifically designed for blind and visually impaired users. This thoughtfully crafted solution helps users better understand their surroundings and interact with the world more confidently and independently.
+Ally Clone combines cutting-edge speech recognition, natural language processing, and computer vision to create an intuitive assistant specifically designed for blind and visually impaired users. This thoughtfully crafted solution helps users better understand their surroundings and interact with the world more confidently and independently.
 
 ---
 
