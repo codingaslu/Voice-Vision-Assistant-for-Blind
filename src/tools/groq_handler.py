@@ -10,7 +10,7 @@ import time
 import json
 from PIL import Image
 from groq import AsyncGroq
-from src.config import get_config
+from ..config import get_config
 
 # Simple logger without custom handler, will use root logger's config
 logger = logging.getLogger("groq-handler")
@@ -20,29 +20,34 @@ class GroqHandler:
     
     def __init__(self):
         """Initialize the Groq API handler with minimal setup."""
-        config = get_config()
-        self.api_key = config["GROQ_API_KEY"]
-        self.model_id = config["GROQ_MODEL_ID"]
-        self.max_tokens = config["MAX_TOKENS"]
-        self.temperature = config["TEMPERATURE"]
-        
-        logger.info(f"Initializing Groq handler with model: {self.model_id}")
-    
-        if not self.api_key:
-            logger.error("No GROQ_API_KEY provided in configuration or environment variables")
-            self.is_ready = False
-            self._verified = False
-            return
-            
-        # Set up Groq client
         try:
-            os.environ["GROQ_API_KEY"] = self.api_key
-            self.client = AsyncGroq(api_key=self.api_key)
-            self.is_ready = True
-            self._verified = False
-            logger.info("Groq client initialized successfully")
+            config = get_config()
+            self.api_key = config["GROQ_API_KEY"]
+            self.model_id = config["GROQ_MODEL_ID"]
+            self.max_tokens = config["MAX_TOKENS"]
+            self.temperature = config["TEMPERATURE"]
+            
+            logger.info(f"Initializing Groq handler with model: {self.model_id}")
+        
+            if not self.api_key:
+                logger.error("No GROQ_API_KEY provided in configuration or environment variables")
+                self.is_ready = False
+                self._verified = False
+                return
+                
+            # Set up Groq client
+            try:
+                os.environ["GROQ_API_KEY"] = self.api_key
+                self.client = AsyncGroq(api_key=self.api_key)
+                self.is_ready = True
+                self._verified = False
+                logger.info("Groq client initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize Groq client: {e}")
+                self.is_ready = False
+                self._verified = False
         except Exception as e:
-            logger.error(f"Failed to initialize Groq client: {e}")
+            logger.error(f"Error during Groq handler initialization: {e}")
             self.is_ready = False
             self._verified = False
     

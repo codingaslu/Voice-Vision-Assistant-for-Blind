@@ -3,7 +3,11 @@ This file allows you to configure which vision model provider to use.
 """
 
 import os
+import logging
 from enum import Enum
+
+# Get a logger for this module
+logger = logging.getLogger("config")
 
 # Vision provider options
 class VisionProvider(Enum):

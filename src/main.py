@@ -16,6 +16,7 @@ from livekit.agents.llm.llm import ChatChunk, ChoiceDelta
 # Import the tools
 from .tools.visual import VisualProcessor
 from .tools.internet_search import InternetSearch
+from .tools.groq_handler import GroqHandler
 
 # Simple logger without custom handler, will use root logger's config
 logger = logging.getLogger("ally-vision-agent")
@@ -267,9 +268,9 @@ class AllyVisionAgent(Agent):
             
             # Get Groq handler from UserData
             groq_handler = userdata.groq_handler
-            if not groq_handler:
+            if not groq_handler or not getattr(groq_handler, 'is_ready', False):
                 # No need to create a new handler - just use GPT instead
-                logger.warning("No Groq handler available, defaulting to GPT")
+                logger.warning("No Groq handler available or not ready, defaulting to GPT")
                 asyncio.create_task(run_gpt_analysis())
                 userdata.visual_processor._model_choice = "GPT"
                 return "Processing visual analysis..."
@@ -449,17 +450,18 @@ async def entrypoint(ctx: JobContext):
     userdata = UserData()
     userdata.visual_processor = VisualProcessor()
     userdata.internet_search = InternetSearch()
+    
+    # Initialize Groq handler with better error handling
+    try:
+        userdata.groq_handler = GroqHandler()
+        logger.info("Successfully initialized Groq handler")
+    except Exception as e:
+        logger.error(f"Failed to initialize Groq handler: {e}")
+        userdata.groq_handler = None
+
     userdata.current_tool = "general"  # Explicitly set initial tool mode
     userdata.room_ctx = ctx  # Store the JobContext for room access
-    
-    # Initialize the Groq handler once at startup
-    try:
-        from src.tools.groq_handler import GroqHandler
-        userdata.groq_handler = GroqHandler()
-        logger.info("Initialized Groq handler at application startup")
-    except Exception as e:
-        logger.error(f"Failed to initialize Groq handler at startup: {e}")
-    
+        
     # Enable the camera once at startup
     try:
         await userdata.visual_processor.enable_camera(ctx.room)
