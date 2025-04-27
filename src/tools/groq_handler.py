@@ -15,6 +15,18 @@ from ..config import get_config
 # Simple logger without custom handler, will use root logger's config
 logger = logging.getLogger("groq-handler")
 
+# Constants
+SYSTEM_PROMPT = """Binary classifier for images. Respond in JSON format:
+
+IF image contains humans/person/faces → "LLAMA" + answer query like you see the visual.
+IF NO humans/faces → "GPT" + empty string
+
+JSON format:
+{
+  "model_choice": "GPT" or "LLAMA",
+  "analysis": "" if GPT, answer if LLAMA
+}"""
+
 class GroqHandler:
     """Streamlined handler for Groq API integration."""
     
@@ -28,24 +40,22 @@ class GroqHandler:
             self.temperature = config["TEMPERATURE"]
             
             logger.info(f"Initializing Groq handler with model: {self.model_id}")
-        
+            
+            # Quick validation and setup
             if not self.api_key:
-                logger.error("No GROQ_API_KEY provided in configuration or environment variables")
+                logger.error("No GROQ_API_KEY provided in configuration")
                 self.is_ready = False
                 self._verified = False
                 return
                 
             # Set up Groq client
-            try:
-                os.environ["GROQ_API_KEY"] = self.api_key
-                self.client = AsyncGroq(api_key=self.api_key)
-                self.is_ready = True
-                self._verified = False
-                logger.info("Groq client initialized successfully")
-            except Exception as e:
-                logger.error(f"Failed to initialize Groq client: {e}")
-                self.is_ready = False
-                self._verified = False
+            os.environ["GROQ_API_KEY"] = self.api_key
+            self.client = AsyncGroq(api_key=self.api_key)
+            self.is_ready = True
+            self._verified = False
+            self._image_cache = {}
+            logger.info("Groq client initialized successfully")
+            
         except Exception as e:
             logger.error(f"Error during Groq handler initialization: {e}")
             self.is_ready = False
@@ -78,37 +88,25 @@ class GroqHandler:
         Returns:
             Tuple of (model_choice, analysis, error)
         """
-        # Check if the handler is ready
+        # Quick validation
         if not self.is_ready:
-            logger.error("Groq handler is not ready. Missing API key or initialization failed.")
-            return "GPT", "", "Vision API not configured or connection failed."
+            return "GPT", "", "Vision API not configured"
             
         # Verify connection on first use
-        if not self._verified:
-            if not await self.verify_connection():
-                return "GPT", "", "Vision API not configured or connection failed."
+        if not self._verified and not await self.verify_connection():
+            return "GPT", "", "Vision API connection failed"
         
         try:
             # Convert image to base64
             base64_image = await self._convert_and_optimize_image(image)
             if not base64_image:
-                logger.error("Failed to convert image to base64")
-                return "GPT", "", "Failed to process the image."
+                return "GPT", "", "Failed to process the image"
             
-            # Make the call to Groq - Use JSON mode to get both decision and analysis
+            # Make the call to Groq
             completion = await self.client.chat.completions.create(
                 model=self.model_id,
                 messages=[
-                    {"role": "system", "content": """Binary classifier for images. Respond in JSON format:
-
-IF image contains humans/person/faces → "LLAMA" + answer query like you see the visual.
-IF NO humans/faces → "GPT" + empty string
-
-JSON format:
-{
-  "model_choice": "GPT" or "LLAMA",
-  "analysis": "" if GPT, answer if LLAMA
-}"""},
+                    {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": [
                         {"type": "text", "text": f"Answer this query about the seeing the visual in front of the user.please dont mention the image or user word in your answer: {query}"},
                         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
@@ -120,26 +118,20 @@ JSON format:
                 stream=False
             )
             
-            # Extract both model choice and analysis from JSON response
+            # Parse response
             response_json = completion.choices[0].message.content
-            
             response_data = json.loads(response_json)
             
+            # Extract data
             model_choice = response_data.get("model_choice", "GPT").upper()
-            groq_analysis = ""
+            groq_analysis = response_data.get("analysis", "") if model_choice == "LLAMA" else ""
             
-            # Only get analysis if model_choice is LLAMA
-            if model_choice == "LLAMA":
-                groq_analysis = response_data.get("analysis", "")
-            
-            logger.info(f"Model choice: {model_choice}, analysis available: {bool(groq_analysis)}")
-            
-            # Clean and validate the response
+            # Validate
             if model_choice not in ["LLAMA", "GPT"]:
-                # Default to GPT for invalid responses
                 logger.warning(f"Invalid model choice: {model_choice}, defaulting to GPT")
                 model_choice = "GPT"
             
+            logger.info(f"Model choice: {model_choice}, analysis available: {bool(groq_analysis)}")
             return model_choice, groq_analysis, None
             
         except Exception as e:
@@ -149,34 +141,27 @@ JSON format:
     async def _convert_and_optimize_image(self, image, target_mb=3.5):
         """Convert image to base64 string with size optimization."""
         try:
-            # Use quick caching with image hash
-            if hasattr(image, 'tobytes') and hasattr(self, '_image_cache'):
-                # Calculate simple hash of image data for caching
+            # Try to use cached image
+            if hasattr(image, 'tobytes'):
                 try:
                     image_hash = hash(image.tobytes())
                     if image_hash in self._image_cache:
                         return self._image_cache[image_hash]
-                except Exception as hash_error:
-                    # Continue if hashing fails
-                    pass
-            else:
-                # Initialize cache if it doesn't exist
-                if not hasattr(self, '_image_cache'):
-                    self._image_cache = {}
+                except Exception:
+                    pass  # Continue if hashing fails
 
-            # Convert to PIL Image if needed - using faster direct conversion
+            # Convert to PIL Image if needed
             if not isinstance(image, Image.Image):
                 if hasattr(image, 'to_pil'):
                     image = image.to_pil()
                 elif hasattr(image, 'to_ndarray'):
                     import numpy as np
-                    # Direct array conversion without intermediate steps
                     arr = image.to_ndarray()
                     if arr.dtype != np.uint8:
                         arr = np.uint8(arr)
                     image = Image.fromarray(arr)
                 elif hasattr(image, 'data') and hasattr(image, 'width') and hasattr(image, 'height'):
-                    # Handle VideoFrame from LiveKit with optimized conversion
+                    # Handle VideoFrame from LiveKit
                     try:
                         import numpy as np
                         import cv2
@@ -184,21 +169,16 @@ JSON format:
                         data_len = len(image.data)
                         bytes_per_pixel = data_len / (image.width * image.height)
                         
-                        # Pre-allocate arrays for better performance
                         if 1.4 < bytes_per_pixel < 1.6:  # YUV format
-                            # Direct YUV to RGB conversion
                             yuv = np.frombuffer(image.data, dtype=np.uint8)
                             yuv = yuv.reshape((image.height * 3 // 2, image.width))
-                            # Use faster direct conversion
                             rgb = cv2.cvtColor(yuv, cv2.COLOR_YUV2RGB_I420)
                             image = Image.fromarray(rgb)
                         elif 2.9 < bytes_per_pixel < 4.1:  # RGB/RGBA format
                             channels = round(bytes_per_pixel)
-                            # Use memory view for faster access
                             img_array = np.frombuffer(image.data, dtype=np.uint8)
                             img_array = img_array.reshape((image.height, image.width, channels))
                             if channels == 4:
-                                # Just slice the array instead of copying
                                 img_array = img_array[:, :, :3]
                             image = Image.fromarray(img_array)
                         else:
@@ -209,62 +189,54 @@ JSON format:
                 else:
                     return None
             
-            # Only resize if necessary
-            # Skip optimization for smaller images (faster)
+            # Check current size and optimize if needed
             buffer = io.BytesIO()
             image.save(buffer, format="JPEG", quality=85)
             size_mb = len(buffer.getvalue()) * 1.4 / (1024 * 1024)
             
+            # If small enough, use as is
             if size_mb <= target_mb:
-                # If already small enough, skip optimization
                 encoded = base64.b64encode(buffer.getvalue()).decode('utf-8')
                 
                 # Cache result
                 if hasattr(image, 'tobytes'):
                     try:
                         self._image_cache[hash(image.tobytes())] = encoded
-                    except Exception as cache_error:
-                        logger.debug(f"Failed to cache image: {cache_error}")
-                        pass  # Skip caching if it fails
+                    except Exception:
+                        pass
                 
                 return encoded
             
-            if size_mb > target_mb:
-                # Try reducing quality first
-                if size_mb <= target_mb * 1.2:  # If close to target, just reduce quality
-                    # Use binary search for finding optimal quality
-                    min_q, max_q = 45, 85
-                    while min_q < max_q - 5:
-                        mid_q = (min_q + max_q) // 2
-                        buffer = io.BytesIO()
-                        image.save(buffer, format="JPEG", quality=mid_q)
-                        if len(buffer.getvalue()) * 1.4 / (1024 * 1024) <= target_mb:
-                            min_q = mid_q
-                        else:
-                            max_q = mid_q
-                    
-                    # Use the discovered quality
+            # Need optimization
+            if size_mb <= target_mb * 1.2:
+                # Just reduce quality
+                min_q, max_q = 45, 85
+                while min_q < max_q - 5:
+                    mid_q = (min_q + max_q) // 2
                     buffer = io.BytesIO()
-                    image.save(buffer, format="JPEG", quality=min_q)
-                else:  # Need to resize
-                    # Calculate scale more efficiently
-                    scale = (target_mb / size_mb) ** 0.5
-                    new_size = tuple(int(dim * scale) for dim in image.size)
-                    # Use BICUBIC for better performance than LANCZOS
-                    image = image.resize(new_size, Image.BICUBIC)
-                    buffer = io.BytesIO()
-                    image.save(buffer, format="JPEG", quality=85)
+                    image.save(buffer, format="JPEG", quality=mid_q)
+                    if len(buffer.getvalue()) * 1.4 / (1024 * 1024) <= target_mb:
+                        min_q = mid_q
+                    else:
+                        max_q = mid_q
+                
+                buffer = io.BytesIO()
+                image.save(buffer, format="JPEG", quality=min_q)
+            else:
+                # Resize the image
+                scale = (target_mb / size_mb) ** 0.5
+                new_size = tuple(int(dim * scale) for dim in image.size)
+                image = image.resize(new_size, Image.BICUBIC)
+                buffer = io.BytesIO()
+                image.save(buffer, format="JPEG", quality=85)
             
-            # Convert to base64
+            # Encode and cache
             encoded = base64.b64encode(buffer.getvalue()).decode('utf-8')
-            
-            # Cache result
             if hasattr(image, 'tobytes'):
                 try:
                     self._image_cache[hash(image.tobytes())] = encoded
-                except Exception as cache_error:
-                    logger.debug(f"Failed to cache image: {cache_error}")
-                    pass  # Skip caching if it fails
+                except Exception:
+                    pass
                 
             return encoded
             
