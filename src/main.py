@@ -187,25 +187,7 @@ class AllyVisionAgent(Agent):
             # Switch to visual mode
             userdata.current_tool = "visual"
             
-            # Check if Groq handler is None and initialize if needed
-            groq_handler_task = None
-            if userdata.visual_processor._groq_handler is None:
-                # Start Groq handler initialization as a task
-                async def init_groq_handler():
-                    try:
-                        from src.tools.groq_handler import GroqHandler
-                        userdata.visual_processor._groq_handler = GroqHandler()
-                        logger.info("Initialized Groq handler on demand")
-                        return userdata.visual_processor._groq_handler
-                    except Exception as e:
-                        logger.error(f"Failed to initialize Groq handler: {e}")
-                        return None
-                
-                groq_handler_task = asyncio.create_task(init_groq_handler())
-            else:
-                groq_handler = userdata.visual_processor._groq_handler
-            
-            # Start frame capture and context preparation in parallel
+            # Start frame capture in parallel
             frame_capture_task = asyncio.create_task(userdata.visual_processor.capture_frame(room))
             
             # Wait for frame capture to complete
@@ -284,11 +266,21 @@ class AllyVisionAgent(Agent):
                     # Set the analysis_complete flag to True even on error
                     userdata.visual_processor._analysis_complete = True
             
-            # Now, wait for Groq handler if it was initializing
-            if groq_handler_task:
-                groq_handler = await groq_handler_task
-                if not groq_handler:
-                    return "I'm having trouble with the vision system. Please try again."
+            # Get Groq handler from the visual processor
+            groq_handler = userdata.visual_processor._groq_handler
+            if not groq_handler:
+                # Create on-demand if not available (fallback)
+                try:
+                    from src.tools.groq_handler import GroqHandler
+                    groq_handler = GroqHandler()
+                    userdata.visual_processor._groq_handler = groq_handler
+                    logger.info("Created Groq handler on-demand (fallback)")
+                except Exception as e:
+                    logger.error(f"Failed to create Groq handler: {e}")
+                    # Start GPT analysis since we can't use Groq
+                    gpt_analysis_task = asyncio.create_task(run_gpt_analysis())
+                    userdata.visual_processor._model_choice = "GPT"
+                    return "Processing visual analysis..."
             
             # Start GPT analysis in parallel without waiting
             gpt_analysis_task = asyncio.create_task(run_gpt_analysis())
@@ -469,6 +461,14 @@ async def entrypoint(ctx: JobContext):
     userdata.internet_search = InternetSearch()
     userdata.current_tool = "general"  # Explicitly set initial tool mode
     userdata.room_ctx = ctx  # Store the JobContext for room access
+    
+    # Initialize the Groq handler once at startup
+    try:
+        from src.tools.groq_handler import GroqHandler
+        userdata.visual_processor._groq_handler = GroqHandler()
+        logger.info("Initialized Groq handler at application startup")
+    except Exception as e:
+        logger.error(f"Failed to initialize Groq handler at startup: {e}")
     
     # Enable the camera once at startup
     try:

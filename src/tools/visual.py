@@ -26,15 +26,8 @@ class VisualProcessor:
         self._last_response: str = ""
         self._cached_video_track: Optional[rtc.RemoteVideoTrack] = None
         
-        # Initialize Groq handler at startup
+        # Initialize Groq handler placeholder - will be set by main.py
         self._groq_handler = None
-        try:
-            from src.tools.groq_handler import GroqHandler
-            self._groq_handler = GroqHandler()
-            logger.info("Initialized Groq handler at startup")
-        except Exception as e:
-            logger.error(f"Failed to initialize Groq handler: {e}")
-            # Don't set _groq_handler to None since we've already done that
     
     async def enable_camera(self, room: rtc.Room) -> None:
         """Send a signal to enable the camera for the remote participant."""
