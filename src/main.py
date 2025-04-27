@@ -20,6 +20,9 @@ from .tools.groq_handler import GroqHandler
 # Logger
 logger = logging.getLogger("ally-vision-agent")
 
+# Constants
+VISION_SYSTEM_PROMPT = "You are Ally, a vision assistant for blind users. Provide extremely concise and clear descriptions. Focus only on the most important elements needed to answer the user's specific question. Ignore changes in color, brightness, or shading caused by sunglasses. Be direct and to the point. Answer as if the scene is fully visible without distortion. Avoid phrases like \"as seen\" or \"looks like,\" and do not describe things based only on visual appearance. When helpful, explain how a screen reader might announce elements. Tailor your response to what a blind user would truly want to know."
+
 @dataclass
 class UserData:
     # Core settings
@@ -173,11 +176,7 @@ class AllyVisionAgent(Agent):
         userdata.current_tool = "visual"
         
         try:
-            # Validate room connection
-            if not userdata.room_ctx or not userdata.room_ctx.room:
-                return "I couldn't access the camera because the room connection is not available."
-            
-            # Capture image from camera
+            # Capture image - the error handling is already managed in visual_processor.capture_frame
             image = await userdata.visual_processor.capture_frame(userdata.room_ctx.room)
             if image is None:
                 return "I couldn't capture a clear image from the camera."
@@ -189,11 +188,7 @@ class AllyVisionAgent(Agent):
             
             # Set up visual context
             visual_ctx = ChatContext()
-            visual_ctx.add_message(
-                role="system",
-                content="You are Ally, a vision assistant for blind users. Provide extremely concise and clear descriptions. Focus only on the most important elements needed to answer the user's specific question. Ignore changes in color, brightness, or shading caused by sunglasses. Be direct and to the point. Answer as if the scene is fully visible without distortion. Avoid phrases like \"as seen\" or \"looks like,\" and do not describe things based only on visual appearance. When helpful, explain how a screen reader might announce elements. Tailor your response to what a blind user would truly want to know."
-            )
-            
+            visual_ctx.add_message(role="system", content=VISION_SYSTEM_PROMPT)
             visual_ctx.add_message(
                 role="user",
                 content=[
@@ -202,13 +197,11 @@ class AllyVisionAgent(Agent):
                 ]
             )
             
-            # Initialize LLM
+            # Initialize LLM and start analysis
             analysis_llm = openai.LLM(model="gpt-4o")
-            
-            # Always start GPT analysis
             asyncio.create_task(self._run_gpt_analysis(userdata, analysis_llm, visual_ctx))
             
-            # Try Groq if available
+            # Try Groq if available - simplified check
             groq_handler = userdata.groq_handler
             if groq_handler and getattr(groq_handler, 'is_ready', False):
                 try:
@@ -234,10 +227,9 @@ class AllyVisionAgent(Agent):
         if userdata.current_tool == "visual" and userdata._model_choice:
             # GPT streaming case
             if userdata._model_choice == "GPT":
+                # Setup streaming
                 chunk_queue = asyncio.Queue()
                 done_event = asyncio.Event()
-                
-                # Create callback for receiving chunks
                 userdata._add_chunk_callback = lambda content: chunk_queue.put_nowait(content)
                 
                 # Add existing chunks
@@ -248,6 +240,7 @@ class AllyVisionAgent(Agent):
                 try:
                     while not (done_event.is_set() and chunk_queue.empty()):
                         try:
+                            # Get next chunk with timeout
                             chunk = await asyncio.wait_for(chunk_queue.get(), timeout=0.1)
                             full_response += chunk
                             yield ChatChunk(
@@ -256,9 +249,11 @@ class AllyVisionAgent(Agent):
                                 usage=None
                             )
                         except asyncio.TimeoutError:
+                            # Set done if analysis is complete and queue is empty
                             if userdata._analysis_complete and chunk_queue.empty():
                                 done_event.set()
                 finally:
+                    # Cleanup
                     userdata._add_chunk_callback = None
                     userdata._gpt_chunks.clear()
                     done_event.set()
@@ -273,7 +268,7 @@ class AllyVisionAgent(Agent):
                 )
                 userdata._groq_analysis = None
             
-            # No analysis case
+            # Fallback case
             else:
                 full_response = "I couldn't analyze the image properly."
                 yield ChatChunk(
@@ -288,10 +283,8 @@ class AllyVisionAgent(Agent):
         else:
             async with self.llm.chat(chat_ctx=chat_ctx, tools=tools) as stream:
                 async for chunk in stream:
-                    if chunk and hasattr(chunk.delta, 'content'):
-                        content = chunk.delta.content
-                        if content:
-                            full_response += content
+                    if chunk and hasattr(chunk.delta, 'content') and chunk.delta.content:
+                        full_response += chunk.delta.content
                     yield chunk
         
         userdata.last_response = full_response
@@ -304,28 +297,28 @@ class AllyVisionAgent(Agent):
 async def entrypoint(ctx: JobContext):
     """Set up and start the voice agent with all required tools"""
     try:
-        # Connect to room
+        # Connect and initialize
         await ctx.connect()
         
-        # Initialize user data and tools
+        # Create user data with tools
         userdata = UserData()
         userdata.room_ctx = ctx
         userdata.visual_processor = VisualProcessor()
         userdata.internet_search = InternetSearch()
         
-        # Try to initialize Groq (optional)
+        # Initialize optional components with graceful fallbacks
         try:
             userdata.groq_handler = GroqHandler()
         except Exception as e:
             logger.warning(f"Vision will use GPT only: {e}")
-        
-        # Initialize camera
+            
         try:
             await userdata.visual_processor.enable_camera(ctx.room)
         except Exception as e:
             logger.warning(f"Camera setup failed: {e}")
         
-        # Start agent session
+        # Create and start agent
+        agent = AllyVisionAgent()
         agent_session = AgentSession[UserData](
             userdata=userdata,
             stt=deepgram.STT(model="nova-2-general", smart_format=True, punctuate=True, language="en-US"),
@@ -336,7 +329,7 @@ async def entrypoint(ctx: JobContext):
         )
         
         await agent_session.start(
-            agent=AllyVisionAgent(),
+            agent=agent,
             room=ctx.room,
             room_input_options=RoomInputOptions(),
         )
