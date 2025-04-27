@@ -257,6 +257,7 @@ class AllyVisionAgent(Agent):
                     userdata._add_chunk_callback = None
                     userdata._gpt_chunks.clear()
                     done_event.set()
+                    logger.info(f"GPT vision analysis completed")
             
             # LLAMA/Groq single response
             elif userdata._groq_analysis:
@@ -267,6 +268,7 @@ class AllyVisionAgent(Agent):
                     usage=None
                 )
                 userdata._groq_analysis = None
+                logger.info(f"LLAMA vision analysis completed")
             
             # Fallback case
             else:
