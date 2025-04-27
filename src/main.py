@@ -3,10 +3,8 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Annotated, Optional, List, Dict, Any
 import time
-
 from dotenv import load_dotenv
 from pydantic import Field
-
 from livekit.agents import JobContext, WorkerOptions, cli
 from livekit.agents.llm import function_tool
 from livekit.agents.voice import Agent, AgentSession, RunContext
@@ -63,6 +61,9 @@ class AllyVisionAgent(Agent):
             - Avoid mentioning tools or technical details
             - Focus on helpful, concise information
             - Be clear and jargon-free
+            
+            IMPORTANT NOTE:
+            - Don't tell like this: "I don't actually "see" or have sight like a human. However, I can analyze visual content when provided through a tool. If there's a specific image or scene you want analyzed, feel free to let me know!" instead use tools to answer the question.
             """,
             stt=deepgram.STT(
                 model="nova-2-general",
@@ -216,7 +217,7 @@ class AllyVisionAgent(Agent):
             visual_ctx.add_message(
                 role="user",
                 content=[
-                    f"Answer user query: {query}",
+                    f"Answer this query about the seeing the visual in front of the user.please dont mention the image or user word in your answer: {query}",
                     ImageContent(image=image)
                 ]
             )
@@ -228,10 +229,7 @@ class AllyVisionAgent(Agent):
             userdata.visual_processor._prepared_context = visual_ctx
             userdata.visual_processor._prepared_llm = analysis_llm
             
-            # Start GPT analysis immediately in parallel without waiting for model choice
-            # This will happen in parallel with Groq analysis and can be stopped if not needed
-            gpt_analysis_task = None
-            
+            # Define function for GPT analysis
             async def run_gpt_analysis():
                 try:
                     logger.info(f"Running parallel GPT analysis with query: {query[:30]}...")
@@ -269,21 +267,14 @@ class AllyVisionAgent(Agent):
             # Get Groq handler from the visual processor
             groq_handler = userdata.visual_processor._groq_handler
             if not groq_handler:
-                # Create on-demand if not available (fallback)
-                try:
-                    from src.tools.groq_handler import GroqHandler
-                    groq_handler = GroqHandler()
-                    userdata.visual_processor._groq_handler = groq_handler
-                    logger.info("Created Groq handler on-demand (fallback)")
-                except Exception as e:
-                    logger.error(f"Failed to create Groq handler: {e}")
-                    # Start GPT analysis since we can't use Groq
-                    gpt_analysis_task = asyncio.create_task(run_gpt_analysis())
-                    userdata.visual_processor._model_choice = "GPT"
-                    return "Processing visual analysis..."
+                # No need to create a new handler - just use GPT instead
+                logger.warning("No Groq handler available, defaulting to GPT")
+                asyncio.create_task(run_gpt_analysis())
+                userdata.visual_processor._model_choice = "GPT"
+                return "Processing visual analysis..."
             
             # Start GPT analysis in parallel without waiting
-            gpt_analysis_task = asyncio.create_task(run_gpt_analysis())
+            asyncio.create_task(run_gpt_analysis())
             
             # Get model choice and analysis in a single call
             try:
@@ -302,8 +293,6 @@ class AllyVisionAgent(Agent):
             # Store the decision and analysis in userdata for llm_node to use
             userdata.visual_processor._model_choice = model_choice
             userdata.visual_processor._groq_analysis = groq_analysis
-            
-            # GPT analysis is already running in parallel, so we don't need to start it again
             
             # Return a placeholder - actual analysis will happen in llm_node
             return "Processing visual analysis..."
