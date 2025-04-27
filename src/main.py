@@ -31,6 +31,7 @@ class UserData:
     visual_processor: Optional[VisualProcessor] = None
     internet_search: Optional[InternetSearch] = None
     room_ctx: Optional[JobContext] = None  # Store JobContext for room access
+    groq_handler = None  # Store Groq handler directly in UserData
 
 RunContext_T = RunContext[UserData]
 
@@ -264,8 +265,8 @@ class AllyVisionAgent(Agent):
                     # Set the analysis_complete flag to True even on error
                     userdata.visual_processor._analysis_complete = True
             
-            # Get Groq handler from the visual processor
-            groq_handler = userdata.visual_processor._groq_handler
+            # Get Groq handler from UserData
+            groq_handler = userdata.groq_handler
             if not groq_handler:
                 # No need to create a new handler - just use GPT instead
                 logger.warning("No Groq handler available, defaulting to GPT")
@@ -454,7 +455,7 @@ async def entrypoint(ctx: JobContext):
     # Initialize the Groq handler once at startup
     try:
         from src.tools.groq_handler import GroqHandler
-        userdata.visual_processor._groq_handler = GroqHandler()
+        userdata.groq_handler = GroqHandler()
         logger.info("Initialized Groq handler at application startup")
     except Exception as e:
         logger.error(f"Failed to initialize Groq handler at startup: {e}")

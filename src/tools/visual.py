@@ -25,9 +25,6 @@ class VisualProcessor:
         self._last_query: str = ""
         self._last_response: str = ""
         self._cached_video_track: Optional[rtc.RemoteVideoTrack] = None
-        
-        # Initialize Groq handler placeholder - will be set by main.py
-        self._groq_handler = None
     
     async def enable_camera(self, room: rtc.Room) -> None:
         """Send a signal to enable the camera for the remote participant."""
