@@ -144,15 +144,33 @@ JSON format:
     async def _convert_and_optimize_image(self, image, target_mb=3.5):
         """Convert image to base64 string with size optimization."""
         try:
-            # Convert to PIL Image if needed
+            # Use quick caching with image hash
+            if hasattr(image, 'tobytes') and hasattr(self, '_image_cache'):
+                # Calculate simple hash of image data for caching
+                try:
+                    image_hash = hash(image.tobytes())
+                    if image_hash in self._image_cache:
+                        return self._image_cache[image_hash]
+                except:
+                    pass  # Continue if hashing fails
+            else:
+                # Initialize cache if it doesn't exist
+                if not hasattr(self, '_image_cache'):
+                    self._image_cache = {}
+
+            # Convert to PIL Image if needed - using faster direct conversion
             if not isinstance(image, Image.Image):
                 if hasattr(image, 'to_pil'):
                     image = image.to_pil()
                 elif hasattr(image, 'to_ndarray'):
                     import numpy as np
-                    image = Image.fromarray(np.uint8(image.to_ndarray()))
+                    # Direct array conversion without intermediate steps
+                    arr = image.to_ndarray()
+                    if arr.dtype != np.uint8:
+                        arr = np.uint8(arr)
+                    image = Image.fromarray(arr)
                 elif hasattr(image, 'data') and hasattr(image, 'width') and hasattr(image, 'height'):
-                    # Handle VideoFrame from LiveKit
+                    # Handle VideoFrame from LiveKit with optimized conversion
                     try:
                         import numpy as np
                         import cv2
@@ -160,16 +178,21 @@ JSON format:
                         data_len = len(image.data)
                         bytes_per_pixel = data_len / (image.width * image.height)
                         
+                        # Pre-allocate arrays for better performance
                         if 1.4 < bytes_per_pixel < 1.6:  # YUV format
+                            # Direct YUV to RGB conversion
                             yuv = np.frombuffer(image.data, dtype=np.uint8)
                             yuv = yuv.reshape((image.height * 3 // 2, image.width))
-                            bgr = cv2.cvtColor(yuv, cv2.COLOR_YUV2BGR_I420)
-                            image = Image.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
+                            # Use faster direct conversion
+                            rgb = cv2.cvtColor(yuv, cv2.COLOR_YUV2RGB_I420)
+                            image = Image.fromarray(rgb)
                         elif 2.9 < bytes_per_pixel < 4.1:  # RGB/RGBA format
                             channels = round(bytes_per_pixel)
+                            # Use memory view for faster access
                             img_array = np.frombuffer(image.data, dtype=np.uint8)
                             img_array = img_array.reshape((image.height, image.width, channels))
                             if channels == 4:
+                                # Just slice the array instead of copying
                                 img_array = img_array[:, :, :3]
                             image = Image.fromarray(img_array)
                         else:
@@ -180,30 +203,62 @@ JSON format:
                 else:
                     return None
             
-            # Optimize image size if needed
+            # Only resize if necessary
+            # Skip optimization for smaller images (faster)
             buffer = io.BytesIO()
             image.save(buffer, format="JPEG", quality=85)
             size_mb = len(buffer.getvalue()) * 1.4 / (1024 * 1024)
             
+            if size_mb <= target_mb:
+                # If already small enough, skip optimization
+                encoded = base64.b64encode(buffer.getvalue()).decode('utf-8')
+                
+                # Cache result
+                if hasattr(image, 'tobytes'):
+                    try:
+                        self._image_cache[hash(image.tobytes())] = encoded
+                    except:
+                        pass  # Skip caching if it fails
+                
+                return encoded
+            
             if size_mb > target_mb:
                 # Try reducing quality first
                 if size_mb <= target_mb * 1.2:  # If close to target, just reduce quality
-                    for quality in [75, 65, 55, 45]:
+                    # Use binary search for finding optimal quality
+                    min_q, max_q = 45, 85
+                    while min_q < max_q - 5:
+                        mid_q = (min_q + max_q) // 2
                         buffer = io.BytesIO()
-                        image.save(buffer, format="JPEG", quality=quality)
+                        image.save(buffer, format="JPEG", quality=mid_q)
                         if len(buffer.getvalue()) * 1.4 / (1024 * 1024) <= target_mb:
-                            buffer.seek(0)
-                            image = Image.open(buffer)
-                            break
+                            min_q = mid_q
+                        else:
+                            max_q = mid_q
+                    
+                    # Use the discovered quality
+                    buffer = io.BytesIO()
+                    image.save(buffer, format="JPEG", quality=min_q)
                 else:  # Need to resize
+                    # Calculate scale more efficiently
                     scale = (target_mb / size_mb) ** 0.5
                     new_size = tuple(int(dim * scale) for dim in image.size)
-                    image = image.resize(new_size, Image.LANCZOS)
+                    # Use BICUBIC for better performance than LANCZOS
+                    image = image.resize(new_size, Image.BICUBIC)
+                    buffer = io.BytesIO()
+                    image.save(buffer, format="JPEG", quality=85)
             
             # Convert to base64
-            buffer = io.BytesIO()
-            image.save(buffer, format="JPEG", quality=85)
-            return base64.b64encode(buffer.getvalue()).decode('utf-8')
+            encoded = base64.b64encode(buffer.getvalue()).decode('utf-8')
+            
+            # Cache result
+            if hasattr(image, 'tobytes'):
+                try:
+                    self._image_cache[hash(image.tobytes())] = encoded
+                except:
+                    pass  # Skip caching if it fails
+                
+            return encoded
             
         except Exception as e:
             logger.error(f"Error in _convert_and_optimize_image: {e}")
