@@ -156,8 +156,9 @@ JSON format:
                     image_hash = hash(image.tobytes())
                     if image_hash in self._image_cache:
                         return self._image_cache[image_hash]
-                except:
-                    pass  # Continue if hashing fails
+                except Exception as hash_error:
+                    # Continue if hashing fails
+                    pass
             else:
                 # Initialize cache if it doesn't exist
                 if not hasattr(self, '_image_cache'):
@@ -222,7 +223,8 @@ JSON format:
                 if hasattr(image, 'tobytes'):
                     try:
                         self._image_cache[hash(image.tobytes())] = encoded
-                    except:
+                    except Exception as cache_error:
+                        logger.debug(f"Failed to cache image: {cache_error}")
                         pass  # Skip caching if it fails
                 
                 return encoded
@@ -260,7 +262,8 @@ JSON format:
             if hasattr(image, 'tobytes'):
                 try:
                     self._image_cache[hash(image.tobytes())] = encoded
-                except:
+                except Exception as cache_error:
+                    logger.debug(f"Failed to cache image: {cache_error}")
                     pass  # Skip caching if it fails
                 
             return encoded

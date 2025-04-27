@@ -1,11 +1,10 @@
 import logging
 import asyncio
 from dataclasses import dataclass, field
-from typing import Annotated, Optional, List, Dict, Any
+from typing import Annotated, Optional, List
 import time
-from dotenv import load_dotenv
 from pydantic import Field
-from livekit.agents import JobContext, WorkerOptions, cli
+from livekit.agents import JobContext, cli
 from livekit.agents.llm import function_tool
 from livekit.agents.voice import Agent, AgentSession, RunContext
 from livekit.agents.voice.room_io import RoomInputOptions
@@ -18,21 +17,28 @@ from .tools.visual import VisualProcessor
 from .tools.internet_search import InternetSearch
 from .tools.groq_handler import GroqHandler
 
-# Simple logger without custom handler, will use root logger's config
+# Logger
 logger = logging.getLogger("ally-vision-agent")
-
-# Load environment variables
-load_dotenv()
 
 @dataclass
 class UserData:
-    current_tool: str = "general"  #  tool: "visual" or "internet"
+    # Core settings
+    current_tool: str = "general"
     last_query: str = ""
     last_response: str = ""
-    visual_processor: Optional[VisualProcessor] = None
-    internet_search: Optional[InternetSearch] = None
-    room_ctx: Optional[JobContext] = None  # Store JobContext for room access
-    groq_handler = None  # Store Groq handler directly in UserData
+    room_ctx: Optional[JobContext] = None
+    
+    # Tool instances
+    visual_processor: VisualProcessor = None
+    internet_search: InternetSearch = None
+    groq_handler: Optional[GroqHandler] = None
+    
+    # Vision processing state
+    _model_choice: Optional[str] = None
+    _groq_analysis: Optional[str] = None
+    _gpt_chunks: List[str] = field(default_factory=list)
+    _analysis_complete: bool = False
+    _add_chunk_callback = None
 
 RunContext_T = RunContext[UserData]
 
@@ -81,18 +87,6 @@ class AllyVisionAgent(Agent):
         """Called when the agent is first started"""
         logger.info("Entering AllyVisionAgent")
         
-        # Get current user data
-        userdata: UserData = self.session.userdata
-        
-        # Initialize the tools if they don't exist
-        if userdata.visual_processor is None:
-            userdata.visual_processor = VisualProcessor()
-            logger.info("Initialized visual processor")
-            
-        if userdata.internet_search is None:
-            userdata.internet_search = InternetSearch()
-            logger.info("Initialized internet search tool")
-        
         # Use session.say() to ensure the greeting is sent directly
         greeting = "Hi there! How can I help?"
         await self.session.say(greeting)
@@ -123,11 +117,6 @@ class AllyVisionAgent(Agent):
         # Switch to internet mode
         userdata.current_tool = "internet"
         
-        # Ensure we have the internet search tool
-        if userdata.internet_search is None:
-            userdata.internet_search = InternetSearch()
-            logger.info("Created internet search tool on demand")
-        
         # Log the search query
         logger.info(f"Searching: {query[:30]}...")
         
@@ -153,69 +142,58 @@ class AllyVisionAgent(Agent):
             logger.error(f"Error searching the internet: {e}")
             return f"I encountered an error while searching for information about '{query}': {str(e)}"
     
+    async def _run_gpt_analysis(self, userdata, analysis_llm, visual_ctx):
+        """Run GPT analysis and stream results through callback"""
+        try:
+            async with analysis_llm.chat(chat_ctx=visual_ctx) as stream:
+                async for chunk in stream:
+                    if chunk and hasattr(chunk.delta, 'content') and chunk.delta.content:
+                        content = chunk.delta.content
+                        userdata._gpt_chunks.append(content)
+                        if userdata._add_chunk_callback:
+                            userdata._add_chunk_callback(content)
+            
+            userdata._analysis_complete = True
+        except Exception as e:
+            # Handle error and add to stream
+            error_msg = f"Error processing image: {str(e)}"
+            userdata._gpt_chunks.append(error_msg)
+            if userdata._add_chunk_callback:
+                userdata._add_chunk_callback(error_msg)
+            userdata._analysis_complete = True
+    
     @function_tool()
     async def analyze_vision(
         self,
         context: RunContext_T,
         query: Annotated[str, Field(description="Query about the visual scene to analyze")]
     ) -> str:
-        """
-        Capture and analyze the current scene.
-        
-        Uses a single API call to:
-        1. Classify if humans are present (routes to LLAMA) or not (routes to GPT-4o)
-        2. Get analysis for humans directly from Groq
-        3. Preload GPT context for non-human scenes
-        """
+        """Capture and analyze the current scene."""
         userdata = context.userdata
-        
-        logger.info(f"Visual analysis: {query[:30]}...")
+        userdata.current_tool = "visual"
         
         try:
-            # Ensure we have access to the room
-            if userdata.room_ctx is None:
-                logger.error("No room context available")
-                return "I couldn't access the camera because the room connection is not available."
-                
-            room = userdata.room_ctx.room
-            if not room:
-                logger.error("No room available in stored context")
+            # Validate room connection
+            if not userdata.room_ctx or not userdata.room_ctx.room:
                 return "I couldn't access the camera because the room connection is not available."
             
-            # Ensure we have a visual processor
-            if userdata.visual_processor is None:
-                userdata.visual_processor = VisualProcessor()
-                logger.info("Created visual processor on demand")
-                
-            # Switch to visual mode
-            userdata.current_tool = "visual"
-            
-            # Start frame capture in parallel
-            frame_capture_task = asyncio.create_task(userdata.visual_processor.capture_frame(room))
-            
-            # Wait for frame capture to complete
-            image = await frame_capture_task
+            # Capture image from camera
+            image = await userdata.visual_processor.capture_frame(userdata.room_ctx.room)
             if image is None:
-                return "Failed to capture an image from the camera."
+                return "I couldn't capture a clear image from the camera."
             
-            # Store image and query for later use
-            userdata.visual_processor._last_image = image
-            userdata.visual_processor._last_query = query
+            # Reset state
+            userdata._gpt_chunks.clear()
+            userdata._add_chunk_callback = None
+            userdata._analysis_complete = False
             
-            # Initialize chunks array and callback for streaming
-            userdata.visual_processor._gpt_chunks = []
-            userdata.visual_processor._add_chunk_callback = None
-            userdata.visual_processor._analysis_complete = False
-            
-            # Start preparing GPT context IMMEDIATELY - don't wait for Groq decision
-            # Create chat context for GPT and initialize LLM in parallel
+            # Set up visual context
             visual_ctx = ChatContext()
             visual_ctx.add_message(
                 role="system",
                 content="You are Ally, a vision assistant for blind users. Provide extremely concise and clear descriptions. Focus only on the most important elements needed to answer the user's specific question. Ignore changes in color, brightness, or shading caused by sunglasses. Be direct and to the point. Answer as if the scene is fully visible without distortion. Avoid phrases like \"as seen\" or \"looks like,\" and do not describe things based only on visual appearance. When helpful, explain how a screen reader might announce elements. Tailor your response to what a blind user would truly want to know."
             )
             
-            # Add the image and query
             visual_ctx.add_message(
                 role="user",
                 content=[
@@ -224,271 +202,144 @@ class AllyVisionAgent(Agent):
                 ]
             )
             
-            # Initialize LLM for analysis
+            # Initialize LLM
             analysis_llm = openai.LLM(model="gpt-4o")
             
-            # Store prepared context for fast access if needed
-            userdata.visual_processor._prepared_context = visual_ctx
-            userdata.visual_processor._prepared_llm = analysis_llm
+            # Always start GPT analysis
+            asyncio.create_task(self._run_gpt_analysis(userdata, analysis_llm, visual_ctx))
             
-            # Define function for GPT analysis
-            async def run_gpt_analysis():
-                try:
-                    logger.info(f"Running parallel GPT analysis with query: {query[:30]}...")
-                    
-                    # Initialize the analysis_complete flag to False
-                    userdata.visual_processor._analysis_complete = False
-                    
-                    # Use our pre-prepared context
-                    async with analysis_llm.chat(chat_ctx=visual_ctx) as stream:
-                        async for chunk in stream:
-                            if chunk and hasattr(chunk.delta, 'content') and chunk.delta.content:
-                                content = chunk.delta.content
-                                
-                                # Store the chunk for immediate access
-                                userdata.visual_processor._gpt_chunks.append(content)
-                                
-                                # If there's an active callback, send the chunk immediately
-                                if hasattr(userdata.visual_processor, '_add_chunk_callback') and userdata.visual_processor._add_chunk_callback:
-                                    await userdata.visual_processor._add_chunk_callback(content)
-                    
-                    # Set the analysis_complete flag to True
-                    userdata.visual_processor._analysis_complete = True
-                    logger.info("Asynchronous GPT analysis completed")
-                except Exception as e:
-                    logger.error(f"Error in async GPT analysis: {e}")
-                    # Add error message as a chunk if callback exists
-                    error_msg = f"Error processing image: {str(e)}"
-                    userdata.visual_processor._gpt_chunks.append(error_msg)
-                    if hasattr(userdata.visual_processor, '_add_chunk_callback') and userdata.visual_processor._add_chunk_callback:
-                        await userdata.visual_processor._add_chunk_callback(error_msg)
-    
-                    # Set the analysis_complete flag to True even on error
-                    userdata.visual_processor._analysis_complete = True
-            
-            # Get Groq handler from UserData
+            # Try Groq if available
             groq_handler = userdata.groq_handler
-            if not groq_handler or not getattr(groq_handler, 'is_ready', False):
-                # No need to create a new handler - just use GPT instead
-                logger.warning("No Groq handler available or not ready, defaulting to GPT")
-                asyncio.create_task(run_gpt_analysis())
-                userdata.visual_processor._model_choice = "GPT"
-                return "Processing visual analysis..."
+            if groq_handler and getattr(groq_handler, 'is_ready', False):
+                try:
+                    model_choice, groq_analysis, _ = await groq_handler.model_choice_with_analysis(image, query)
+                    userdata._model_choice = model_choice
+                    userdata._groq_analysis = groq_analysis
+                except Exception:
+                    userdata._model_choice = "GPT" 
+            else:
+                userdata._model_choice = "GPT"
             
-            # Start GPT analysis in parallel without waiting
-            asyncio.create_task(run_gpt_analysis())
-            
-            # Get model choice and analysis in a single call
-            try:
-                model_choice, groq_analysis, error = await groq_handler.model_choice_with_analysis(image, query)
-                
-                if error:
-                    logger.error(f"Error from model_choice_with_analysis: {error}")
-                    model_choice = "GPT"  # Default to GPT on error
-            except Exception as e:
-                logger.error(f"Unexpected error from Groq handler: {e}")
-                model_choice = "GPT"  # Default to GPT on unexpected errors
-                groq_analysis = ""
-            
-            logger.info(f"Model choice: {model_choice}")
-            
-            # Store the decision and analysis in userdata for llm_node to use
-            userdata.visual_processor._model_choice = model_choice
-            userdata.visual_processor._groq_analysis = groq_analysis
-            
-            # Return a placeholder - actual analysis will happen in llm_node
             return "Processing visual analysis..."
             
         except Exception as e:
             logger.error(f"Error in analyze_vision: {e}")
-            return f"I encountered an error while trying to analyze what's in front of me: {str(e)}"
+            return "I encountered an error while processing the visual information."
+    
+    async def _process_stream(self, chat_ctx, tools, userdata):
+        """Process and stream responses based on current context"""
+        full_response = ""
+        
+        # Handle vision analysis
+        if userdata.current_tool == "visual" and userdata._model_choice:
+            # GPT streaming case
+            if userdata._model_choice == "GPT":
+                chunk_queue = asyncio.Queue()
+                done_event = asyncio.Event()
+                
+                # Create callback for receiving chunks
+                userdata._add_chunk_callback = lambda content: chunk_queue.put_nowait(content)
+                
+                # Add existing chunks
+                for chunk in userdata._gpt_chunks:
+                    chunk_queue.put_nowait(chunk)
+                
+                # Process chunks
+                try:
+                    while not (done_event.is_set() and chunk_queue.empty()):
+                        try:
+                            chunk = await asyncio.wait_for(chunk_queue.get(), timeout=0.1)
+                            full_response += chunk
+                            yield ChatChunk(
+                                id=f"gptcmpl-{time.time()}",
+                                delta=ChoiceDelta(role="assistant", content=chunk),
+                                usage=None
+                            )
+                        except asyncio.TimeoutError:
+                            if userdata._analysis_complete and chunk_queue.empty():
+                                done_event.set()
+                finally:
+                    userdata._add_chunk_callback = None
+                    userdata._gpt_chunks.clear()
+                    done_event.set()
+            
+            # LLAMA/Groq single response
+            elif userdata._groq_analysis:
+                full_response = userdata._groq_analysis
+                yield ChatChunk(
+                    id=f"groqcmpl-{time.time()}",
+                    delta=ChoiceDelta(role="assistant", content=full_response),
+                    usage=None
+                )
+                userdata._groq_analysis = None
+            
+            # No analysis case
+            else:
+                full_response = "I couldn't analyze the image properly."
+                yield ChatChunk(
+                    id=f"groqcmpl-{time.time()}",
+                    delta=ChoiceDelta(role="assistant", content=full_response),
+                    usage=None
+                )
+            
+            userdata._model_choice = None
+        
+        # Standard LLM processing
+        else:
+            async with self.llm.chat(chat_ctx=chat_ctx, tools=tools) as stream:
+                async for chunk in stream:
+                    if chunk and hasattr(chunk.delta, 'content'):
+                        content = chunk.delta.content
+                        if content:
+                            full_response += content
+                    yield chunk
+        
+        userdata.last_response = full_response
     
     async def llm_node(self, chat_ctx, tools, model_settings=None):
         """Override llm_node to modify the output before sending to TTS"""
-        # Access the LLM directly from self instance
-        userdata: UserData = self.session.userdata
-        current_tool = userdata.current_tool
-        
-        # Keep track of the full response
-        full_response = ""
-        
-        async def process_stream():
-            nonlocal full_response
-            
-            # Check if we need to handle visual analysis
-            if (current_tool == "visual" and 
-                hasattr(userdata.visual_processor, '_model_choice') and 
-                userdata.visual_processor._model_choice):
-                
-                # Choose model based on the decision
-                if userdata.visual_processor._model_choice == "GPT":
-                    # Initialize a queue to store the chunks as they arrive
-                    chunk_queue = asyncio.Queue()
-                    processing_done = asyncio.Event()
-                    
-                    # Set up a callback to add chunks to the queue as they arrive
-                    async def add_chunk_to_queue(content):
-                        await chunk_queue.put(content)
-                    
-                    # Check if we have partial results available
-                    if hasattr(userdata.visual_processor, '_gpt_chunks') and userdata.visual_processor._gpt_chunks:
-                        # Add existing chunks to the queue
-                        for chunk in userdata.visual_processor._gpt_chunks:
-                            await chunk_queue.put(chunk)
-                    
-                    # Set up a task to update the _gpt_chunks callback
-                    userdata.visual_processor._add_chunk_callback = add_chunk_to_queue
-                    
-                    # Process chunks as they arrive
-                    try:
-                        while not processing_done.is_set() or not chunk_queue.empty():
-                            try:
-                                # Get a chunk with a timeout to avoid blocking forever
-                                chunk = await asyncio.wait_for(chunk_queue.get(), timeout=0.1)
-                                full_response += chunk
-                                
-                                # Create a proper ChatChunk with the chunk content
-                                yield ChatChunk(
-                                    id=f"gptcmpl-{time.time()}",
-                                    delta=ChoiceDelta(
-                                        role="assistant",
-                                        content=chunk
-                                    ),
-                                    usage=None
-                                )
-                            except asyncio.TimeoutError:
-                                # Check if analysis is complete
-                                if hasattr(userdata.visual_processor, '_analysis_complete') and userdata.visual_processor._analysis_complete:
-                                    if chunk_queue.empty():
-                                        processing_done.set()
-                                # No chunk available yet, continue waiting
-                                continue
-                    except Exception as e:
-                        logger.error(f"Error processing GPT chunks: {e}")
-                    finally:
-                        # Clean up
-                        processing_done.set()
-                        userdata.visual_processor._add_chunk_callback = None
-                        if hasattr(userdata.visual_processor, '_gpt_chunks'):
-                            userdata.visual_processor._gpt_chunks = []
-                    
-                else:  # LLAMA via Groq
-                    # Use the pre-generated Groq analysis
-                    if (hasattr(userdata.visual_processor, '_groq_analysis') and 
-                        userdata.visual_processor._groq_analysis):
-                        logger.info("Using pre-generated Groq analysis")
-                        analysis_text = userdata.visual_processor._groq_analysis
-                        # Clear the stored analysis
-                        userdata.visual_processor._groq_analysis = None
-                        
-                        # Create a proper ChatChunk with the analysis
-                        chunk = ChatChunk(
-                            id=f"groqcmpl-{time.time()}",
-                            delta=ChoiceDelta(
-                                role="assistant",
-                                content=analysis_text
-                            ),
-                            usage=None
-                        )
-                        yield chunk
-                        
-                        # Store the full response
-                        full_response = analysis_text
-                    else:
-                        error_msg = "No pre-generated Groq analysis available"
-                        logger.error(error_msg)
-                        # Create error chunk in proper format
-                        chunk = ChatChunk(
-                            id=f"groqcmpl-{time.time()}",
-                            delta=ChoiceDelta(
-                                role="assistant",
-                                content=error_msg
-                            ),
-                            usage=None
-                        )
-                        yield chunk
-                        full_response = error_msg
-                
-                # Store the response and reset model choice
-                userdata.last_response = full_response
-                userdata.visual_processor._model_choice = None
-                return
-            
-            # For non-visual queries, use the standard LLM processing
-            async with self.llm.chat(chat_ctx=chat_ctx, tools=tools, tool_choice=None) as stream:
-                async for chunk in stream:
-                    if chunk is None:
-                        continue
-                    
-                    # Extract content from chunk
-                    content = getattr(chunk.delta, 'content', None) if hasattr(chunk, 'delta') else str(chunk)
-                    
-                    if content is None:
-                        yield chunk
-                        continue
-                    
-                    # Append to full response
-                    full_response += content
-                    
-                    # Update the chunk with processed content
-                    if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'content'):
-                        chunk.delta.content = content
-                    else:
-                        chunk = content
-                    
-                    yield chunk
-            
-            # Store the response
-            userdata.last_response = full_response
-        
-        return process_stream()
+        userdata = self.session.userdata
+        return self._process_stream(chat_ctx, tools, userdata)
 
 async def entrypoint(ctx: JobContext):
-    await ctx.connect()
-    
-    # Initialize user data with tools and room context
-    userdata = UserData()
-    userdata.visual_processor = VisualProcessor()
-    userdata.internet_search = InternetSearch()
-    
-    # Initialize Groq handler with better error handling
+    """Set up and start the voice agent with all required tools"""
     try:
-        userdata.groq_handler = GroqHandler()
-        logger.info("Successfully initialized Groq handler")
-    except Exception as e:
-        logger.error(f"Failed to initialize Groq handler: {e}")
-        userdata.groq_handler = None
-
-    userdata.current_tool = "general"  # Explicitly set initial tool mode
-    userdata.room_ctx = ctx  # Store the JobContext for room access
+        # Connect to room
+        await ctx.connect()
         
-    # Enable the camera once at startup
-    try:
-        await userdata.visual_processor.enable_camera(ctx.room)
+        # Initialize user data and tools
+        userdata = UserData()
+        userdata.room_ctx = ctx
+        userdata.visual_processor = VisualProcessor()
+        userdata.internet_search = InternetSearch()
+        
+        # Try to initialize Groq (optional)
+        try:
+            userdata.groq_handler = GroqHandler()
+        except Exception as e:
+            logger.warning(f"Vision will use GPT only: {e}")
+        
+        # Initialize camera
+        try:
+            await userdata.visual_processor.enable_camera(ctx.room)
+        except Exception as e:
+            logger.warning(f"Camera setup failed: {e}")
+        
+        # Start agent session
+        agent_session = AgentSession[UserData](
+            userdata=userdata,
+            stt=deepgram.STT(model="nova-2-general", smart_format=True, punctuate=True, language="en-US"),
+            llm=openai.LLM(model="gpt-4o", parallel_tool_calls=False),
+            tts=elevenlabs.TTS(model="eleven_multilingual_v2"),
+            vad=silero.VAD.load(),
+            max_tool_steps=3,
+        )
+        
+        await agent_session.start(
+            agent=AllyVisionAgent(),
+            room=ctx.room,
+            room_input_options=RoomInputOptions(),
+        )
+        
     except Exception as e:
-        logger.error(f"Failed to enable camera: {e}")
-    
-    # Create agent session with VAD to avoid warning
-    agent_session = AgentSession[UserData](
-        userdata=userdata,
-        stt=deepgram.STT(
-            model="nova-2-general",
-            smart_format=True,
-            punctuate=True,
-            language="en-US"
-        ),
-        llm=openai.LLM(model="gpt-4o", parallel_tool_calls=False),
-        tts=elevenlabs.TTS(model="eleven_multilingual_v2"),
-        vad=silero.VAD.load(),  # Add VAD to avoid warning
-        max_tool_steps=3,
-    )
-    
-    # Create processor agent
-    processor_agent = AllyVisionAgent()
-    
-    # Start the agent session
-    await agent_session.start(
-        agent=processor_agent,
-        room=ctx.room,
-        room_input_options=RoomInputOptions(),
-    )
+        logger.error(f"Agent startup failed: {e}")
