@@ -1,14 +1,25 @@
-# Envision AI - Voice and Vision Assistant
+<div align="center">
 
-## Overview
+# ✨ Envision AI ✨
 
-Envision AI is an advanced voice and vision assistant designed specifically for blind and visually impaired users. It combines speech recognition, natural language processing, and computer vision to provide a comprehensive assistance solution.
+### An Advanced Voice & Vision Assistant for Blind and Visually Impaired Users
 
-## System Architecture
+*Bridging the visual gap through AI-powered assistance*
 
-The system uses a multi-component architecture to process user inputs and generate helpful responses:
+</div>
 
-<!-- FLOWCHART IMAGE: Replace with your system architecture flowchart -->
+---
+
+## 📋 Overview
+
+Envision AI combines cutting-edge speech recognition, natural language processing, and computer vision to create an intuitive assistant specifically designed for blind and visually impaired users. This thoughtfully crafted solution helps users better understand their surroundings and interact with the world more confidently and independently.
+
+---
+
+## 🏗️ System Architecture
+
+The system utilizes an elegant multi-component architecture to process user inputs and generate helpful responses:
+
 ```mermaid
 graph TD
     %% Main flow - simplified
@@ -43,236 +54,231 @@ graph TD
     class QueryType,ModelChoice decision
     class Response output
 ```
-## Key Features
 
-1. **Dual Vision Model Approach**
-   - Primary analysis with OpenAI's GPT-4o
-   - Fallback to Llama-4-Scout-17B for enhanced person detection
-   - Privacy-focused solution to describe people when primary model refuses
+---
 
-2. **Response Streaming**
-   - Real-time response generation and delivery
-   - Progressive output for improved user experience
-   - Natural conversation with the assistant using speech
+## ✨ Key Features
 
-3. **Specialized System Instructions**
-   - Detailed guidance for handling visual queries
-   - Automatic detection of refusal cases requiring fallback
-   - Contextual tool selection based on query type
+### 🔄 Dual Vision Model Approach
+* **People Detection First:** Llama-4-Scout-17B checks for presence of people
+* **Conditional Processing:** GPT-4o for scenes without people, Llama for scenes with people
+* **Privacy-Aware:** Thoughtful descriptions while respecting privacy
 
-4. **Blind/Low-Vision Optimizations**
-   - Detailed descriptions prioritizing elements important for visually impaired users
-   - Concise but thorough scene analysis
-   - Voice-first interface design
-   - Accessibility-first approach throughout the system
+### 🌊 Real-time Response Streaming
+* Progressive output for improved user experience
+* Natural conversational flow with minimal latency
+* Immediate feedback during interaction
 
-5. **Comprehensive Capabilities**
-   - **Voice Interaction**: Natural conversation with the assistant using speech
-   - **Visual Understanding**: Camera-based vision to describe surroundings, including people
-   - **Internet Search**: Real-time information lookup for current events and facts
-   - **Multi-component Integration**: Seamless coordination between vision, voice, and search tools
+### 👁️ Blind/Low-Vision Optimizations
+* **Detailed Descriptions:** Prioritizes key elements for visually impaired users
+* **Voice-First Design:** Intuitive speech interface reduces barriers
+* **Concise Analysis:** Thorough yet efficient scene descriptions
 
-## Model Selection & Evaluation Criteria
+### 🧩 Comprehensive Capabilities
+* **Voice Interaction:** Natural conversation using speech
+* **Visual Understanding:** Camera-based vision to describe surroundings
+* **Internet Search:** Real-time information lookup
+* **Seamless Integration:** Coordinated operation between components
 
-We carefully selected the `meta-llama/llama-4-scout-17b-16e-instruct` model for our fallback vision processing based on the following criteria:
+---
 
-1. **Performance**:
-   - **TTFT < 500ms**: Tests show average TTFT of ~100-150ms, well below the 500ms requirement
-   - **Batch Processing**: Successfully handles 10+ consecutive image queries without degradation
-   - **Streaming Support**: Provides token-by-token streaming for a responsive user experience
+## 🔧 Technical Implementation
 
-2. **Capability**:
-   - **People Recognition**: Reliably describes people in images where GPT-4o refuses
-   - **Multimodal Abilities**: Processes both text and image inputs simultaneously
-   - **Context Window**: 10M tokens (limited to 128K in preview) supports rich conversations
+### Model Selection
 
-3. **Technical Specifications**:
-   - **Image Processing Limits**: 
-     - 4MB maximum for base64 encoded images
-     - 20MB maximum for image URL inputs
-     - Supports multiple images per request (recommend max 5)
-   - **Implementation**: Easy integration through the official Groq Python client
-   - **Reliability**: High success rate (>95%) in our testing
+We carefully selected `meta-llama/llama-4-scout-17b-16e-instruct` as our primary people detection model based on:
 
-### Why Groq API?
+| Criteria | Performance |
+|:---------|:------------|
+| Response Time | TTFT < 150ms (well below 500ms requirement) |
+| Batch Processing | Handles 10+ consecutive image queries without degradation |
+| Streaming | Provides token-by-token streaming for responsive UX |
+| People Recognition | Reliably identifies presence of people in images |
+| Image Limits | 4MB (base64), 20MB (URL), multiple images supported |
+| Success Rate | >95% in testing |
 
-GPT-4o sometimes declines to answer image questions when there are people in the frame due to privacy guardrails. Groq API serves as a critical fallback system:
+### Groq API Integration
 
-- **Fast Response Times**: TTFT < 500ms, meeting our performance requirements
-- **Powerful Models**: Access to state-of-the-art Llama 4 Scout models
-- **People Recognition**: Reliably describes people in images where GPT-4o refuses
-- **Simple Integration**: Clean API with official Python client library
+The Groq API powers our Llama model implementation when people are detected in scenes:
 
-### Technical Details of Llama-4-Scout-17B
+* **⚡ Fast Processing:** Sub-500ms TTFT meets accessibility requirements
+* **🧠 Advanced Models:** Leverages state-of-the-art Llama 4 Scout capabilities
+* **🔌 Simple Integration:** Clean API with official Python client library
 
-Llama-4-Scout-17B is a powerful multimodal model with impressive capabilities:
+---
 
-- **Context Window**: 10M tokens (limited to 128K in preview)
-- **Image Processing**: Capable of detailed understanding of image content
-- **Multilingual Support**: Handles multiple languages effectively
-- **Tool Use**: Supports function calling and tool use
-- **JSON Mode**: Can output structured JSON responses
-
-The model excels at vision tasks and can reliably process images containing people when GPT-4o declines due to privacy guardrails.
-
-## Project Structure
+## 🗂️ Project Structure
 
 ```
-Envision-AI-Assignment-main/
+Envision-AI/
 ├── app.py                  # Main entry point
 ├── requirements.txt        # Dependencies
-├── .env                    # Environment variables
+├── .env                    # Environment variables (not committed)
 ├── images/                 # Images and diagrams
 └── src/
-    ├── main.py             # Entry point and agent implementation
+    ├── main.py             # Agent implementation
     ├── config.py           # Configuration handling
     └── tools/
-        ├── visual.py       # Visual processing (camera, frames, image analysis)
-        ├── groq_handler.py # Groq API integration for enhanced image analysis
+        ├── visual.py       # Visual processing pipeline
+        ├── groq_handler.py # Groq API integration
         └── internet_search.py # Web search functionality
-
 ```
 
-## Getting Started
+---
+
+## 🚀 Getting Started
 
 ### Prerequisites
 
-- Python 3.9+
-- LiveKit API access
-- OpenAI API access
-- Deepgram API access
-- ElevenLabs API access
-- Groq API access
+* **Python 3.9+** - Core programming language
+* **LiveKit API** - For real-time communication
+* **OpenAI API** - For GPT-4o capabilities
+* **Deepgram API** - For speech-to-text functionality
+* **ElevenLabs API** - For text-to-speech synthesis
+* **Groq API** - For fallback vision processing
 
 ### Installation
 
-1. Clone the repository
-   ```bash
-   git clone https://github.com/codingaslu/Ally-Clone-Assignment.git
-   cd Ally-Clone-Assignment
-   ```
+<details>
+<summary><b>1. Clone the repository</b></summary>
 
-2. Create a virtual environment and install dependencies
-   ```bash
-   python -m venv ally_env
-   source ally_env/bin/activate  # On Windows: ally_env\Scripts\activate
-   pip install -U pip
-   pip install -r requirements.txt
-   ```
+```bash
+git clone https://github.com/codingaslu/Envision-AI.git
+cd Envision-AI
+```
+</details>
 
-3. Set up environment variables (create a `.env` file)
-   ```
-   LIVEKIT_URL=...
-   LIVEKIT_API_KEY=...
-   LIVEKIT_API_SECRET=...
-   DEEPGRAM_API_KEY=...  # Generate a new API key from Deepgram dashboard as the provided one looks expired
-   OPENAI_API_KEY=...
-   ELEVEN_API_KEY=...
+<details>
+<summary><b>2. Set up environment</b></summary>
+
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -U pip
+pip install -r requirements.txt
+```
+</details>
+
+<details>
+<summary><b>3. Configure environment variables</b></summary>
    
-   # Vision provider configuration
-   VISION_PROVIDER=groq
-   
-   # Groq API configuration
-   GROQ_API_KEY=your_groq_api_key  # Get your API key from https://console.groq.com/keys
-   GROQ_MODEL_ID=meta-llama/llama-4-scout-17b-16e-instruct
-   ```
-
-### Running the Assistant
-
-Before running the application, download plugin dependency files:
-```bash
-python app.py download-files
+Create a `.env` file with the following:
 ```
+LIVEKIT_URL=your_livekit_url
+LIVEKIT_API_KEY=your_livekit_key
+LIVEKIT_API_SECRET=your_livekit_secret
+DEEPGRAM_API_KEY=your_deepgram_key
+OPENAI_API_KEY=your_openai_key
+ELEVEN_API_KEY=your_elevenlabs_key
 
-Run the application:
+# Vision configuration
+VISION_PROVIDER=groq
 
-Standard mode:
-```bash
-python app.py start
+# Groq API configuration
+GROQ_API_KEY=your_groq_api_key
+GROQ_MODEL_ID=meta-llama/llama-4-scout-17b-16e-instruct
 ```
+</details>
 
-Development mode:
-```bash
-python app.py dev
-```
+### Running the Application
 
-Connect using the [LiveKit hosted playground](https://agents-playground.livekit.io/).
+| Step | Command | Description |
+|:-----|:--------|:------------|
+| 1 | `python app.py download-files` | Download dependencies |
+| 2a | `python app.py start` | Start in standard mode |
+| 2b | `python app.py dev` | Start in development mode |
+| 3 | Connect via [LiveKit playground](https://agents-playground.livekit.io/) | Begin interaction |
 
+---
 
-### Implementation Details
+## 🛠️ Implementation Details
 
-#### Key Components
+### Core Components
 
-1. **Voice Agent**
-   - **STT**: Deepgram for real-time speech-to-text
-   - **TTS**: ElevenLabs for natural-sounding text-to-speech
+#### 🎙️ Voice Pipeline
+* **STT:** Deepgram for real-time speech-to-text conversion
+* **TTS:** ElevenLabs for natural-sounding text-to-speech
 
-2. **Language Processing**
-   - **LLM**: OpenAI GPT-4o for general conversation and queries
-   - **Function Calling**: Structured routing to appropriate capabilities
+#### 🧠 Language Processing
+* **Primary LLM:** OpenAI GPT-4o for conversational intelligence
+* **Function Routing:** Dynamic selection of appropriate capabilities
 
-3. **Vision Processing**
-   - **Primary**: GPT-4o multimodal capabilities for most vision tasks
-   - **Fallback**: Groq API (Llama-4-Scout-17B) for processing people in images when needed
+#### 👁️ Vision Processing
+* **People Detection:** Llama-4-Scout-17B to determine presence of people
+* **Scene Analysis:** GPT-4o for scenes without people, Llama for scenes with people
 
-### Groq Integration
+---
 
-Groq API is integrated using the official Groq Python client. The integration allows for:
+## 🧩 Challenges and Solutions
 
-- Accessing powerful Llama models via API
-- Processing images and text queries in a single pipeline
-- Generating detailed descriptions of images, including people
-- Handling multiple images in a single conversation turn
+### Privacy-Preserving Vision
 
-The system automatically routes images to Groq API when GPT-4o refuses to describe people.
+**Challenge:** GPT-4o sometimes refuses to describe people in images due to privacy guardrails.
 
-## Challenges and Solutions
-
-### Privacy Considerations
-
-GPT-4o sometimes refuses to describe people in images due to privacy guardrails. To solve this:
-1. The system detects refusal responses using LLM-based detection
-2. Groq API is used as a fallback model for these cases
-3. Responses are cleaned and normalized before being read to the user
+**Solution:**
+1. Llama model first checks for presence of people in images
+2. Route to appropriate model based on content (GPT-4o for no people, Llama for people)
+3. Response normalization for consistent user experience
 
 ### Performance Optimization
 
-The Groq integration is optimized through:
-1. Efficient API client configuration
-2. Image resizing to meet API size limits
-3. Parallel processing when appropriate
+**Approaches:**
+* ⚡ Efficient API client configuration
+* 🖼️ Image preprocessing and optimization
+* ⏱️ Parallel processing where appropriate
+* 🌊 Response streaming for immediate feedback
 
-## Performance and Limitations
+---
 
-- **Internet Requirement**: The system requires internet connectivity for both GPT-4o and Groq API
-- **API Rate Limits**: Subject to rate limits from the Groq API service
-- **Image Size Restrictions**: Maximum 4MB for base64 encoded images
-- **Context Window**: Limited to 128K tokens in preview (out of 10M theoretical maximum)
+## 📊 Performance and Limitations
 
-## Future Improvements
+| Aspect | Details |
+|:-------|:--------|
+| Connectivity | Requires stable internet connection |
+| API Rate Limits | Subject to provider limitations |
+| Image Size | Max 4MB (base64), 20MB (URL) |
+| Context Window | 128K tokens in preview |
 
-- Advanced image preprocessing for optimal quality
-- Google Map integration for location-based queries
-- Distance, weather, and time information in responses
-- Calendar integration for scheduling
-- QR code generation and scanning
-- Enhanced caching for faster responses
-- Multi-image sequence processing for better context
-- More personalized voice options
+---
 
-## License
+## 🔮 Future Roadmap
+
+| Planned Feature | Description |
+|:----------------|:------------|
+| 🖼️ Advanced preprocessing | Enhanced image optimization pipeline |
+| 🗺️ Location integration | Google Maps integration for location context |
+| 🌤️ Environmental data | Weather, distance, and temporal information |
+| 📅 Calendar features | Scheduling and appointment assistance |
+| 📱 Code recognition | QR and barcode detection and processing |
+| ⚡ Performance upgrades | Response caching for improved speed |
+| 🎞️ Sequential analysis | Multi-image sequence processing |
+| 🎙️ Voice personalization | Customizable voice profile selection |
+
+---
+
+## 📄 License
 
 This project is proprietary and confidential. All rights reserved.
 
-## Acknowledgments
+---
 
-- LiveKit for the WebRTC platform
-- OpenAI for GPT-4o capabilities
-- Groq for API access to Llama models
-- Deepgram and ElevenLabs for voice technologies
+## 👏 Acknowledgments
 
-## Support
+* **LiveKit** - WebRTC infrastructure
+* **OpenAI** - GPT-4o capabilities  
+* **Groq** - Llama model API access
+* **Deepgram** - Speech recognition technology
+* **ElevenLabs** - Voice synthesis technology
 
-If you encounter any issues or have questions, please email muhammedaslam179@gmail.com
+---
 
+<div align="center">
 
+## 📞 Support
+
+For issues or questions, please contact:
+
+**Email:** muhammedaslam179@gmail.com  
+**GitHub:** [Open an Issue](https://github.com/codingaslu/Envision-AI/issues)
+
+</div>

@@ -267,7 +267,7 @@ class AllyVisionAgent(Agent):
                 async def run_gpt_analysis():
                     try:
                         logger.info(f"Running async GPT analysis with query: {query[:30]}...")
-                        
+        
                         # Initialize the analysis_complete flag to False
                         userdata.visual_processor._analysis_complete = False
                         
@@ -294,7 +294,7 @@ class AllyVisionAgent(Agent):
                         userdata.visual_processor._gpt_chunks.append(error_msg)
                         if hasattr(userdata.visual_processor, '_add_chunk_callback') and userdata.visual_processor._add_chunk_callback:
                             await userdata.visual_processor._add_chunk_callback(error_msg)
-                        
+        
                         # Set the analysis_complete flag to True even on error
                         userdata.visual_processor._analysis_complete = True
                 
