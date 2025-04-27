@@ -96,7 +96,7 @@ class GroqHandler:
                 messages=[
                     {"role": "system", "content": """Binary classifier for images. Respond in JSON format:
 
-IF image contains humans/person/faces → "LLAMA" + answer query
+IF image contains humans/person/faces → "LLAMA" + answer query like you see the visual.
 IF NO humans/faces → "GPT" + empty string
 
 JSON format:
@@ -105,7 +105,7 @@ JSON format:
   "analysis": "" if GPT, answer if LLAMA
 }"""},
                     {"role": "user", "content": [
-                        {"type": "text", "text": f"Answer this query about the image in detail: {query}"},
+                        {"type": "text", "text": f"Answer this query about the seeing the visual in front of the user.please dont mention the image or user word in your answer: {query}"},
                         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
                     ]}
                 ],
