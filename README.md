@@ -18,7 +18,7 @@ Voice & Vision Assistant for Blind combines cutting-edge speech recognition, nat
 
 ## 🏗️ System Architecture
 
-The system utilizes an elegant multi-component architecture to process user inputs and generate helpful responses:
+The system utilizes a simple multi-component architecture:
 
 ```mermaid
 graph TD
@@ -31,37 +31,15 @@ graph TD
     QueryType -->|"Search"| SearchProcess["Internet Search"]
     QueryType -->|"Places"| PlacesProcess["Places Search"]
     QueryType -->|"Calendar"| CalendarProcess["Calendar Management"]
-    QueryType -->|"Communication"| CommProcess["Contacts & Email"]
+    QueryType -->|"Communication"| CommProcess["Email & Contacts"]
     QueryType -->|"General"| TextProcess["Direct Text Response"]
     
-    %% Simplified visual path
-    VisualProcess --> ModelChoice{"Model Selection"}
-    ModelChoice -->|"GPT-4o"| GPTAnalysis["GPT Analysis Stream"]
-    ModelChoice -->|"LLAMA"| LLAMAAnalysis["LLAMA Analysis"]
-    
-    %% Places path
-    PlacesProcess --> GooglePlaces["Google Places API"]
-    GooglePlaces --> PlacesResults["Location Details"]
-    
-    %% Calendar path
-    CalendarProcess --> GoogleCalendar["Google Calendar API"]
-    GoogleCalendar --> CalendarResults["Event Management"]
-    
-    %% Communication path
-    CommProcess --> CommChoice{"Service Type"}
-    CommChoice -->|"Contacts"| GoogleContacts["Google Contacts API"]
-    CommChoice -->|"Email"| Gmail["Gmail API"]
-    GoogleContacts --> ContactResults["Contact Information"]
-    Gmail --> EmailResults["Email Management"]
-    
     %% Output consolidation - simplified
-    GPTAnalysis --> Response["TTS Processing"]
-    LLAMAAnalysis --> Response
+    VisualProcess --> Response["TTS Processing"]
     SearchProcess --> Response
-    PlacesResults --> Response
-    CalendarResults --> Response
-    ContactResults --> Response
-    EmailResults --> Response
+    PlacesProcess --> Response
+    CalendarProcess --> Response
+    CommProcess --> Response
     TextProcess --> Response
     Response --> Deliver["Voice Response to User"]
     
@@ -70,13 +48,11 @@ graph TD
     classDef process fill:#f6ffed,stroke:#52c41a,stroke-width:1px
     classDef decision fill:#fff7e6,stroke:#fa8c16,stroke-width:1px
     classDef output fill:#f9f0ff,stroke:#722ed1,stroke-width:1px
-    classDef api fill:#fff1f0,stroke:#f5222d,stroke-width:1px
     
     class User,Deliver interface
-    class Router,VisualProcess,GPTAnalysis,LLAMAAnalysis,SearchProcess,TextProcess,PlacesProcess,CalendarProcess,CommProcess process
-    class QueryType,ModelChoice,CommChoice decision
-    class Response,PlacesResults,CalendarResults,ContactResults,EmailResults output
-    class GooglePlaces,GoogleCalendar,GoogleContacts,Gmail api
+    class Router,VisualProcess,SearchProcess,TextProcess,PlacesProcess,CalendarProcess,CommProcess process
+    class QueryType decision
+    class Response output
 ```
 
 ---
@@ -103,7 +79,7 @@ graph TD
 * **Visual Understanding:** Camera-based vision to describe surroundings
 * **Internet Search:** Real-time information lookup
 * **Calendar Management:** Add and view calendar events
-* **Email & Contacts:** Find contacts, read and send emails
+* **Communication Tools:** Find contacts, read and send emails
 * **Seamless Integration:** Coordinated operation between components
 
 ---
@@ -209,9 +185,11 @@ GROQ_API_KEY=your_groq_api_key  # Get your API key from https://console.groq.com
 GROQ_MODEL_ID=meta-llama/llama-4-scout-17b-16e-instruct
    
 # Google Places API configuration
-GPLACES_API_KEY=your_google_places_api_key  # Get your API key from Google Cloud Console https://console.cloud.google.com/google/maps-apis/credentials
+GPLACES_API_KEY=your_google_places_api_key  # Get from Google Cloud Console
+
+# Gmail configuration (only needed for sending emails)
 GMAIL_MAIL=your_gmail_address
-GMAIL_APP_PASSWORD=your_gmail_app_password
+GMAIL_APP_PASSWORD=your_gmail_app_password  # Get from Google Account → Security → App passwords
 ```
 </details>
 
