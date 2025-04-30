@@ -26,7 +26,10 @@ CONFIG = {
     # Groq configuration
     "GROQ_API_KEY": os.environ.get("GROQ_API_KEY", ""),
     "GROQ_MODEL_ID": os.environ.get("GROQ_MODEL_ID", "meta-llama/llama-4-scout-17b-16e-instruct"),  # Can also use: meta-llama/llama-4-scout-17b-16e-instruct or llama-3.2-90b-vision-preview or llama-3.2-11b-vision-preview
-    
+
+    # Google Places API configuration
+    "GPLACES_API_KEY": os.environ.get("GPLACES_API_KEY", ""),
+
     # Common configuration
     "MAX_TOKENS": 500,
     "TEMPERATURE": 0.7,

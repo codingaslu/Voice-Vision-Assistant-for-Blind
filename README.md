@@ -29,6 +29,7 @@ graph TD
     %% Simplified branches
     QueryType -->|"Visual"| VisualProcess["Visual Analysis"]
     QueryType -->|"Search"| SearchProcess["Internet Search"]
+    QueryType -->|"Places"| PlacesProcess["Places Search"]
     QueryType -->|"General"| TextProcess["Direct Text Response"]
     
     %% Simplified visual path
@@ -36,10 +37,15 @@ graph TD
     ModelChoice -->|"GPT-4o"| GPTAnalysis["GPT Analysis Stream"]
     ModelChoice -->|"LLAMA"| LLAMAAnalysis["LLAMA Analysis"]
     
+    %% Places path
+    PlacesProcess --> GooglePlaces["Google Places API"]
+    GooglePlaces --> PlacesResults["Location Details"]
+    
     %% Output consolidation - simplified
     GPTAnalysis --> Response["TTS Processing"]
     LLAMAAnalysis --> Response
     SearchProcess --> Response
+    PlacesResults --> Response
     TextProcess --> Response
     Response --> Deliver["Voice Response to User"]
     
@@ -48,11 +54,13 @@ graph TD
     classDef process fill:#f6ffed,stroke:#52c41a,stroke-width:1px
     classDef decision fill:#fff7e6,stroke:#fa8c16,stroke-width:1px
     classDef output fill:#f9f0ff,stroke:#722ed1,stroke-width:1px
+    classDef api fill:#fff1f0,stroke:#f5222d,stroke-width:1px
     
     class User,Deliver interface
-    class Router,VisualProcess,GPTAnalysis,LLAMAAnalysis,SearchProcess,TextProcess process
+    class Router,VisualProcess,GPTAnalysis,LLAMAAnalysis,SearchProcess,TextProcess,PlacesProcess process
     class QueryType,ModelChoice decision
-    class Response output
+    class Response,PlacesResults output
+    class GooglePlaces api
 ```
 
 ---
