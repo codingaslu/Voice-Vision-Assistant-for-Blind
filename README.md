@@ -118,18 +118,19 @@ The Groq API powers our Llama model implementation when people are detected in s
 ## 🗂️ Project Structure
 
 ```
-Envision-AI/
+Ally/
 ├── app.py                  # Main entry point
 ├── requirements.txt        # Dependencies
-├── .env                    # Environment variables (not committed)
+├── .env                    # Environment variables
 ├── images/                 # Images and diagrams
 └── src/
-    ├── main.py             # Agent implementation
+    ├── main.py             # Entry point and agent implementation
     ├── config.py           # Configuration handling
     └── tools/
-        ├── visual.py       # Visual processing pipeline
-        ├── groq_handler.py # Groq API integration
-        └── internet_search.py # Web search functionality
+        ├── visual.py       # Visual processing (camera, frames, image analysis)
+        ├── groq_handler.py # Groq API integration for enhanced image analysis
+        ├── internet_search.py # Web search functionality
+        └── google_places.py # Places search using Google Places 
 ```
 
 ---
