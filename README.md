@@ -1,6 +1,6 @@
 <div align="center">
 
-# ✨ Ally Clone ✨
+# ✨ Voice & Vision Assistant for Blind ✨
 
 ### An Advanced Voice & Vision Assistant for Blind and Visually Impaired Users
 
@@ -12,7 +12,7 @@
 
 ## 📋 Overview
 
-Ally Clone combines cutting-edge speech recognition, natural language processing, and computer vision to create an intuitive assistant specifically designed for blind and visually impaired users. This thoughtfully crafted solution helps users better understand their surroundings and interact with the world more confidently and independently.
+Voice & Vision Assistant for Blind combines cutting-edge speech recognition, natural language processing, and computer vision to create an intuitive assistant specifically designed for blind and visually impaired users. This thoughtfully crafted solution helps users better understand their surroundings and interact with the world more confidently and independently.
 
 ---
 
@@ -30,6 +30,8 @@ graph TD
     QueryType -->|"Visual"| VisualProcess["Visual Analysis"]
     QueryType -->|"Search"| SearchProcess["Internet Search"]
     QueryType -->|"Places"| PlacesProcess["Places Search"]
+    QueryType -->|"Calendar"| CalendarProcess["Calendar Management"]
+    QueryType -->|"Communication"| CommProcess["Contacts & Email"]
     QueryType -->|"General"| TextProcess["Direct Text Response"]
     
     %% Simplified visual path
@@ -41,11 +43,25 @@ graph TD
     PlacesProcess --> GooglePlaces["Google Places API"]
     GooglePlaces --> PlacesResults["Location Details"]
     
+    %% Calendar path
+    CalendarProcess --> GoogleCalendar["Google Calendar API"]
+    GoogleCalendar --> CalendarResults["Event Management"]
+    
+    %% Communication path
+    CommProcess --> CommChoice{"Service Type"}
+    CommChoice -->|"Contacts"| GoogleContacts["Google Contacts API"]
+    CommChoice -->|"Email"| Gmail["Gmail API"]
+    GoogleContacts --> ContactResults["Contact Information"]
+    Gmail --> EmailResults["Email Management"]
+    
     %% Output consolidation - simplified
     GPTAnalysis --> Response["TTS Processing"]
     LLAMAAnalysis --> Response
     SearchProcess --> Response
     PlacesResults --> Response
+    CalendarResults --> Response
+    ContactResults --> Response
+    EmailResults --> Response
     TextProcess --> Response
     Response --> Deliver["Voice Response to User"]
     
@@ -57,10 +73,10 @@ graph TD
     classDef api fill:#fff1f0,stroke:#f5222d,stroke-width:1px
     
     class User,Deliver interface
-    class Router,VisualProcess,GPTAnalysis,LLAMAAnalysis,SearchProcess,TextProcess,PlacesProcess process
-    class QueryType,ModelChoice decision
-    class Response,PlacesResults output
-    class GooglePlaces api
+    class Router,VisualProcess,GPTAnalysis,LLAMAAnalysis,SearchProcess,TextProcess,PlacesProcess,CalendarProcess,CommProcess process
+    class QueryType,ModelChoice,CommChoice decision
+    class Response,PlacesResults,CalendarResults,ContactResults,EmailResults output
+    class GooglePlaces,GoogleCalendar,GoogleContacts,Gmail api
 ```
 
 ---
@@ -86,6 +102,8 @@ graph TD
 * **Voice Interaction:** Natural conversation using speech
 * **Visual Understanding:** Camera-based vision to describe surroundings
 * **Internet Search:** Real-time information lookup
+* **Calendar Management:** Add and view calendar events
+* **Email & Contacts:** Find contacts, read and send emails
 * **Seamless Integration:** Coordinated operation between components
 
 ---
@@ -126,11 +144,14 @@ Ally/
 └── src/
     ├── main.py             # Entry point and agent implementation
     ├── config.py           # Configuration handling
+    ├── utils.py            # Utility functions for Google API integration
     └── tools/
         ├── visual.py       # Visual processing (camera, frames, image analysis)
         ├── groq_handler.py # Groq API integration for enhanced image analysis
         ├── internet_search.py # Web search functionality
-        └── google_places.py # Places search using Google Places 
+        ├── google_places.py # Places search using Google Places API
+        ├── calendar.py     # Calendar integration for managing events
+        └── communication.py # Contact and email management
 ```
 
 ---
@@ -184,9 +205,65 @@ ELEVEN_API_KEY=your_elevenlabs_key
 VISION_PROVIDER=groq
 
 # Groq API configuration
-GROQ_API_KEY=your_groq_api_key
+GROQ_API_KEY=your_groq_api_key  # Get your API key from https://console.groq.com/keys
 GROQ_MODEL_ID=meta-llama/llama-4-scout-17b-16e-instruct
+   
+# Google Places API configuration
+GPLACES_API_KEY=your_google_places_api_key  # Get your API key from Google Cloud Console https://console.cloud.google.com/google/maps-apis/credentials
+GMAIL_MAIL=your_gmail_address
+GMAIL_APP_PASSWORD=your_gmail_app_password
 ```
+</details>
+
+<details>
+<summary><b>4. Set up Google API credentials</b></summary>
+
+1. Create a new project in the [Google Cloud Console](https://console.cloud.google.com/)
+2. Enable the required APIs:
+   - Google Calendar API
+   - People API (Contacts)
+   - Gmail API
+3. Create OAuth 2.0 credentials:
+   - Go to "Credentials" and click "Create Credentials" > "OAuth client ID"
+   - Select "Desktop app" as the application type
+   - Give it a name and click "Create"
+   - Download the JSON file
+4. **Important**: Rename the downloaded file to `credentials.json` and place it in the project root directory
+5. When you first run the application and try to use calendar or email features, it will:
+   - Open a browser window for authentication
+   - Ask you to sign in to your Google account
+   - Request permission to access your calendar, contacts, and email
+   - After granting permission, it will create a `token.json` file for future use
+</details>
+
+<details>
+<summary><b>5. Special Setup Instructions for Blind Users</b></summary>
+
+### Important: One-Time Authentication Process
+
+For blind users, the Google OAuth authentication process requires sighted assistance **only once** during initial setup:
+
+1. **Initial Setup (One-Time with Assistance)**:
+   - After installing the application, the first time you use any Google service (calendar, contacts, email), 
+     the system will need authentication
+   - A browser window will open with Google's authentication page
+   - **This step requires sighted assistance** to complete the login and permission granting
+   - The assistant should:
+     - Help navigate to the URL provided in the console
+     - Log in to the blind user's Google account
+     - Grant the requested permissions
+     - Confirm when the "Authentication successful" message appears
+
+2. **After Initial Setup (No Assistance Needed)**:
+   - The system creates a `token.json` file that stores authentication securely
+   - This token works for approximately **7 days**
+   - No further visual authentication is needed during this period
+   - When the token expires, the authentication flow will trigger again (requiring assistance)
+
+3. **Long-Term Solution (Optional)**:
+   - For completely independent use, a developer can modify the application to use Service Account authentication
+   - This alternative method doesn't require browser authentication but needs more technical setup
+   - Contact the support email below if you need help implementing this solution
 </details>
 
 ### Running the Application
@@ -291,3 +368,25 @@ For issues or questions, please contact:
 **GitHub:** [Open an Issue](https://github.com/codingaslu/Envision-AI/issues)
 
 </div>
+
+## 🔧 Troubleshooting
+
+### Google API Authentication Issues
+
+| Issue | Solution |
+|:------|:---------|
+| "credentials.json file not found" | Ensure you've renamed the downloaded OAuth credentials file to `credentials.json` and placed it in the project root directory |
+| "Token has been expired or revoked" | Delete the `token.json` file and restart the app to go through the authentication flow again (will require sighted assistance) |
+| Authentication window doesn't open | Run the application from a terminal with GUI access. If using SSH, ensure X11 forwarding is enabled |
+| Calendar events not showing | Check that you've enabled the Calendar API in Google Cloud Console and granted the necessary permissions |
+| Contacts not found | Verify that you've enabled the People API and that contacts exist in your Google Contacts |
+| Email sending fails | Make sure you've enabled "Less secure app access" in your Google account or generated an App Password if using 2FA |
+
+### General Issues
+
+| Issue | Solution |
+|:------|:---------|
+| Missing dependencies | Run `pip install -r requirements.txt` to install all required packages |
+| API keys not working | Double-check your `.env` file for correct API keys and ensure all services are properly configured |
+| Camera not enabling | Ensure your device has a camera and the necessary permissions are granted |
+| Voice not working | Check your microphone settings and verify Deepgram API key is valid |

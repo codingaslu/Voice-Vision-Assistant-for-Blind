@@ -17,6 +17,8 @@ from .tools.visual import VisualProcessor
 from .tools.internet_search import InternetSearch
 from .tools.groq_handler import GroqHandler
 from .tools.google_places import PlacesSearch
+from .tools.calendar import CalendarTool
+from .tools.communication import CommunicationTool
 
 # Logger
 logger = logging.getLogger("ally-vision-agent")
@@ -36,6 +38,9 @@ class UserData:
     visual_processor: VisualProcessor = None
     internet_search: InternetSearch = None
     groq_handler: Optional[GroqHandler] = None
+    places_search: Optional[PlacesSearch] = None
+    calendar_tool: Optional[CalendarTool] = None
+    communication_tool: Optional[CommunicationTool] = None
     
     # Vision processing state
     _model_choice: Optional[str] = None
@@ -68,6 +73,17 @@ class AllyVisionAgent(Agent):
             PLACES SEARCHES:
             - For restaurants, businesses, points of interest: use search_places tool
             - Help find locations, addresses, and business information
+            
+            CALENDAR MANAGEMENT:
+            - For adding events to calendar: use manage_calendar with action="add_event"
+            - For checking schedule: use manage_calendar with action="get_events"
+            - Help manage appointments and meetings
+            
+            COMMUNICATION:
+            - For finding contact information: use manage_communication with action="find_contact"
+            - For reading emails: use manage_communication with action="read_emails"
+            - For sending emails: use manage_communication with action="send_email"
+            - Help stay connected with contacts
 
             GENERAL QUESTIONS:
             - Use your knowledge for general questions not requiring vision or search
@@ -340,6 +356,145 @@ class AllyVisionAgent(Agent):
         userdata = self.session.userdata
         return self._process_stream(chat_ctx, tools, userdata)
 
+    @function_tool()
+    async def manage_calendar(
+        self,
+        context: RunContext_T,
+        action: Annotated[str, Field(description="Action to perform: 'add_event' or 'get_events'")],
+        title: Annotated[Optional[str], Field(description="Title of the event (for add_event only)")] = None,
+        description: Annotated[Optional[str], Field(description="Description of the event (for add_event only)")] = None,
+        start_time: Annotated[Optional[str], Field(description="Start time of the event in ISO format (for add_event only)")] = None,
+        start_date: Annotated[Optional[str], Field(description="Start date in ISO format (for get_events only)")] = None,
+        end_date: Annotated[Optional[str], Field(description="End date in ISO format (for get_events only)")] = None,
+    ) -> str:
+        """
+        Manage calendar events - add new events or view scheduled events.
+        
+        For adding events, specify action='add_event', title, description, and start_time.
+        For viewing events, specify action='get_events', start_date, and end_date.
+        """
+        userdata = context.userdata
+        
+        # Switch to calendar mode
+        userdata.current_tool = "calendar"
+        
+        # Ensure we have the calendar tool
+        if userdata.calendar_tool is None:
+            userdata.calendar_tool = CalendarTool()
+            logger.info("Created calendar tool on demand")
+        
+        # Prepare kwargs based on action
+        kwargs = {}
+        if action == "add_event":
+            if not all([title, start_time]):
+                return "Title and start time are required for adding events."
+            kwargs = {
+                "title": title,
+                "description": description or "",
+                "start_time": start_time
+            }
+            logger.info(f"Adding calendar event: {title} at {start_time}")
+        elif action == "get_events":
+            if not all([start_date, end_date]):
+                return "Start date and end date are required for viewing events."
+            kwargs = {
+                "start_date": start_date,
+                "end_date": end_date
+            }
+            logger.info(f"Getting calendar events from {start_date} to {end_date}")
+        else:
+            return f"Unsupported calendar action: {action}"
+        
+        try:
+            # Call the unified calendar management method
+            result = await userdata.calendar_tool.manage_calendar(action, **kwargs)
+            
+            # Store the response for future reference
+            userdata.last_response = result
+            
+            # Switch back to general mode after completing calendar action
+            userdata.current_tool = "general"
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error in calendar action {action}: {e}")
+            return f"I encountered an error while performing the calendar operation: {str(e)}"
+
+    @function_tool()
+    async def manage_communication(
+        self,
+        context: RunContext_T,
+        action: Annotated[str, Field(description="Action to perform: 'find_contact', 'read_emails', or 'send_email'")],
+        name: Annotated[Optional[str], Field(description="Name of the contact to find (for find_contact only)")] = None,
+        from_date: Annotated[Optional[str], Field(description="From date in ISO format (for read_emails only)")] = None,
+        to_date: Annotated[Optional[str], Field(description="To date in ISO format (for read_emails only)")] = None,
+        email: Annotated[Optional[str], Field(description="Email to filter by (optional for read_emails) or recipient (for send_email)")] = None,
+        subject: Annotated[Optional[str], Field(description="Email subject (for send_email only)")] = None,
+        body: Annotated[Optional[str], Field(description="Email body content (for send_email only)")] = None,
+    ) -> str:
+        """
+        Manage contacts and emails - find contacts, read emails, or send messages.
+        
+        For finding contacts, specify action='find_contact' and name.
+        For reading emails, specify action='read_emails', from_date, to_date, and optionally email.
+        For sending emails, specify action='send_email', email (recipient), subject, and body.
+        """
+        userdata = context.userdata
+        
+        # Switch to communication mode
+        userdata.current_tool = "communication"
+        
+        # Ensure we have the communication tool
+        if userdata.communication_tool is None:
+            userdata.communication_tool = CommunicationTool()
+            logger.info("Created communication tool on demand")
+        
+        # Prepare kwargs based on action
+        kwargs = {}
+        if action == "find_contact":
+            if not name:
+                return "Contact name is required for finding contacts."
+            kwargs = {"name": name}
+            logger.info(f"Finding contact information for: {name}")
+        elif action == "read_emails":
+            if not all([from_date, to_date]):
+                return "From date and to date are required for reading emails."
+            kwargs = {
+                "from_date": from_date,
+                "to_date": to_date
+            }
+            if email:
+                kwargs["email"] = email
+            logger.info(f"Reading emails from {from_date} to {to_date}" + (f" from {email}" if email else ""))
+        elif action == "send_email":
+            if not all([email, subject, body]):
+                return "Recipient email, subject, and body are required for sending emails."
+            kwargs = {
+                "to": email,
+                "subject": subject,
+                "body": body
+            }
+            logger.info(f"Sending email to: {email} with subject: {subject}")
+        else:
+            return f"Unsupported communication action: {action}"
+        
+        try:
+            # Call the unified communication management method
+            result = await userdata.communication_tool.manage_communication(action, **kwargs)
+            
+            # Store the response for future reference
+            userdata.last_response = result
+            
+            # Switch back to general mode after completing communication action
+            userdata.current_tool = "general"
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error in communication action {action}: {e}")
+            return f"I encountered an error while performing the communication operation: {str(e)}"
+
 async def entrypoint(ctx: JobContext):
     """Set up and start the voice agent with all required tools"""
     try:
@@ -352,6 +507,8 @@ async def entrypoint(ctx: JobContext):
         userdata.visual_processor = VisualProcessor()
         userdata.internet_search = InternetSearch()
         userdata.places_search = PlacesSearch()
+        userdata.calendar_tool = CalendarTool()
+        userdata.communication_tool = CommunicationTool()
 
         # Initialize optional components with graceful fallbacks
         try:

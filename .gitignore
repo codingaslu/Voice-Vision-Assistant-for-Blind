@@ -87,5 +87,13 @@ htmlcov/
 *api_key*
 *secret*
 # !.env  # Keep the example .env file
+
+# Credentials and tokens
+credentials.json
+token.json
+client_secret_*.json
+*token*.json
+*oauth*.json
+
 # Generated files
 conversation_log.txt .gitignore

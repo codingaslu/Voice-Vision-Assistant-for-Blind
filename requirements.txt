@@ -23,3 +23,8 @@ opencv-python
 # For Google Places API integration
 langchain-google-community>=0.0.1
 googlemaps
+
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+google-api-python-client
