@@ -178,8 +178,8 @@ Ally/
 <summary><b>1. Clone the repository</b></summary>
 
 ```bash
-git clone https://github.com/codingaslu/Envision-AI.git
-cd Envision-AI
+git clone https://github.com/codingaslu/Ally-Clone-Assignment.git
+cd Ally-Clone-Assignment
 ```
 </details>
 
@@ -303,6 +303,11 @@ For blind users, the Google OAuth authentication process requires sighted assist
 * **People Detection:** Llama-4-Scout-17B to determine presence of people
 * **Scene Analysis:** GPT-4o for scenes without people, Llama for scenes with people
 
+#### 🌎 Location Services
+* **Places Search:** Google Places API for finding businesses and points of interest
+* **Relevant Results:** Provides address, ratings, opening hours, and other details
+* **Accessibility Focus:** Tailored information relevant for blind and visually impaired users
+
 ---
 
 ## 🧩 Challenges and Solutions
@@ -385,7 +390,7 @@ For issues or questions, please contact:
 | Issue | Solution |
 |:------|:---------|
 | "credentials.json file not found" | Ensure you've renamed the downloaded OAuth credentials file to `credentials.json` and placed it in the project root directory |
-| "Token has been expired or revoked" | Delete the `token.json` file and restart the app to go through the authentication flow again (will require sighted assistance) |
+| "Token has been expired or revoked" | The application will automatically start a new authentication flow when needed (approximately every 7 days). When this happens, sighted assistance will be required to complete the Google login process. No manual deletion of files is necessary. |
 | Authentication window doesn't open | Run the application from a terminal with GUI access. If using SSH, ensure X11 forwarding is enabled |
 | Calendar events not showing | Check that you've enabled the Calendar API in Google Cloud Console and granted the necessary permissions |
 | Contacts not found | Verify that you've enabled the People API and that contacts exist in your Google Contacts |
