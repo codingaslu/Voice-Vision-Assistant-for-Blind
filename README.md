@@ -104,8 +104,10 @@ graph TD
 * **Voice Interaction:** Natural conversation using speech
 * **Visual Understanding:** Camera-based vision to describe surroundings
 * **Internet Search:** Real-time information lookup
+* **Location Search:** Find nearby businesses, restaurants, and points of interest
 * **Calendar Management:** Add and view calendar events
-* **Email & Contacts:** Find contacts, read and send emails
+* **Contact Management:** Find contact information from your Google Contacts
+* **Email Management:** Read emails and send messages
 * **Seamless Integration:** Coordinated operation between components
 
 ---
@@ -168,6 +170,7 @@ Ally/
 * **Deepgram API** - For speech-to-text functionality
 * **ElevenLabs API** - For text-to-speech synthesis
 * **Groq API** - For fallback vision processing
+* **Google APIs** - For Places, Calendar, Contacts, and Gmail functionality
 
 ### Installation
 
@@ -222,6 +225,7 @@ GMAIL_APP_PASSWORD=your_gmail_app_password
 
 1. Create a new project in the [Google Cloud Console](https://console.cloud.google.com/)
 2. Enable the required APIs:
+   - Google Places API Web Service
    - Google Calendar API
    - People API (Contacts)
    - Gmail API
@@ -231,7 +235,11 @@ GMAIL_APP_PASSWORD=your_gmail_app_password
    - Give it a name and click "Create"
    - Download the JSON file
 4. **Important**: Rename the downloaded file to `credentials.json` and place it in the project root directory
-5. When you first run the application and try to use calendar or email features, it will:
+5. Create API key for Places API:
+   - Go to "Credentials" and click "Create Credentials" > "API Key"
+   - Restrict the key to only the Google Places API
+   - Copy this key to your `.env` file as `GPLACES_API_KEY`
+6. When you first run the application and try to use calendar or email features, it will:
    - Open a browser window for authentication
    - Ask you to sign in to your Google account
    - Request permission to access your calendar, contacts, and email
@@ -336,7 +344,6 @@ For blind users, the Google OAuth authentication process requires sighted assist
 | 🖼️ Advanced preprocessing | Enhanced image optimization pipeline |
 | 🗺️ Location integration | Google Maps integration for location context |
 | 🌤️ Environmental data | Weather, distance, and temporal information |
-| 📅 Calendar features | Scheduling and appointment assistance |
 | 📱 Code recognition | QR and barcode detection and processing |
 | ⚡ Performance upgrades | Response caching for improved speed |
 | 🎞️ Sequential analysis | Multi-image sequence processing |
