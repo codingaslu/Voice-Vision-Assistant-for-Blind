@@ -266,9 +266,9 @@ For blind users, the Google OAuth authentication process requires sighted assist
 
 2. **After Initial Setup (No Assistance Needed)**:
    - The system creates a `token.json` file that stores authentication securely
-   - This token works for approximately **7 days**
-   - No further visual authentication is needed during this period
-   - When the token expires, the authentication flow will trigger again (requiring assistance)
+   - This token remains valid indefinitely with regular use
+   - No further visual authentication is typically needed
+   - Re-authentication is only required if access is explicitly revoked or unused for months
 
 3. **Long-Term Solution (Optional)**:
    - For completely independent use, a developer can modify the application to use Service Account authentication
@@ -390,7 +390,7 @@ For issues or questions, please contact:
 | Issue | Solution |
 |:------|:---------|
 | "credentials.json file not found" | Ensure you've renamed the downloaded OAuth credentials file to `credentials.json` and placed it in the project root directory |
-| "Token has been expired or revoked" | The application will automatically start a new authentication flow when needed (approximately every 7 days). When this happens, sighted assistance will be required to complete the Google login process. No manual deletion of files is necessary. |
+| "Token has been expired or revoked" | The application handles token refreshing automatically. Once authenticated, you typically won't need to log in again unless you explicitly revoke access in your Google account or don't use the application for an extended period (months). If re-authentication is ever needed, sighted assistance would be required only for that one-time process. |
 | Authentication window doesn't open | Run the application from a terminal with GUI access. If using SSH, ensure X11 forwarding is enabled |
 | Calendar events not showing | Check that you've enabled the Calendar API in Google Cloud Console and granted the necessary permissions |
 | Contacts not found | Verify that you've enabled the People API and that contacts exist in your Google Contacts |
