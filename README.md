@@ -100,6 +100,11 @@ graph TD
 * **Voice-First Design:** Intuitive speech interface reduces barriers
 * **Concise Analysis:** Thorough yet efficient scene descriptions
 
+### 🎭 Virtual Avatar Integration
+* **Visual Representation:** Optional virtual avatar for video calls
+* **Enhanced Communication:** Helps blind users interact with sighted individuals
+* **Professional Presence:** Maintains visual engagement in meetings and calls
+
 ### 🧩 Comprehensive Capabilities
 * **Voice Interaction:** Natural conversation using speech
 * **Visual Understanding:** Camera-based vision to describe surroundings
@@ -217,6 +222,13 @@ GROQ_MODEL_ID=meta-llama/llama-4-scout-17b-16e-instruct
 GPLACES_API_KEY=your_google_places_api_key  # Get your API key from Google Cloud Console https://console.cloud.google.com/google/maps-apis/credentials
 GMAIL_MAIL=your_gmail_address
 GMAIL_APP_PASSWORD=your_gmail_app_password
+
+# Tavus virtual avatar configuration (optional)
+ENABLE_AVATAR=false
+TAVUS_API_KEY=your_tavus_api_key
+TAVUS_REPLICA_ID=your_replica_id
+TAVUS_PERSONA_ID=your_persona_id
+TAVUS_AVATAR_NAME=ally-vision-avatar
 ```
 </details>
 
@@ -274,6 +286,60 @@ For blind users, the Google OAuth authentication process requires sighted assist
    - For completely independent use, a developer can modify the application to use Service Account authentication
    - This alternative method doesn't require browser authentication but needs more technical setup
    - Contact the support email below if you need help implementing this solution
+</details>
+
+<details>
+<summary><b>6. Virtual Avatar Setup (Optional)</b></summary>
+
+### Tavus Virtual Avatar Integration
+
+1. **Prerequisites**:
+   - Sign up for a [Tavus](https://tavus.com) account
+   - Create a replica (virtual avatar)
+   - Generate an API key
+
+2. **Installation**:
+   - The required dependencies are included in the requirements.txt file
+   - Make sure you have `livekit-agents[tavus]` and `livekit-plugins-tavus` installed
+
+3. **Configuration**:
+   Add the following to your `.env` file:
+   ```
+   # Tavus virtual avatar configuration
+   ENABLE_AVATAR=true
+   TAVUS_API_KEY=your_tavus_api_key
+   TAVUS_REPLICA_ID=your_replica_id
+   TAVUS_PERSONA_ID=your_persona_id
+   TAVUS_AVATAR_NAME=ally-vision-avatar
+   ```
+
+4. **Persona Setup**:
+   You need to create a Tavus persona with specific settings using the Tavus API:
+   ```bash
+   curl --request POST \
+     --url https://tavusapi.com/v2/personas \
+     -H "Content-Type: application/json" \
+     -H "x-api-key: <your-tavus-api-key>" \
+     -d '{
+       "layers": {
+           "transport": {
+               "transport_type": "livekit"
+           }
+       },
+       "persona_name": "Ally Assistant Avatar",
+       "pipeline_mode": "echo"
+   }'
+   ```
+   - Save the `id` from the response as your `TAVUS_PERSONA_ID`
+   - Use your replica ID as `TAVUS_REPLICA_ID`
+
+5. **When to Use**:
+   - Professional meetings where visual presence helps
+   - Family video calls with sighted relatives
+   - Educational or work environments
+   - Any situation where blind users benefit from having a visual representation
+
+The avatar will automatically handle the audio output when enabled, creating a seamless experience for both the blind user and sighted participants in the conversation.
 </details>
 
 ### Running the Application
@@ -404,61 +470,3 @@ For issues or questions, please contact:
 | API keys not working | Double-check your `.env` file for correct API keys and ensure all services are properly configured |
 | Camera not enabling | Ensure your device has a camera and the necessary permissions are granted |
 | Voice not working | Check your microphone settings and verify Deepgram API key is valid |
-
-## 🎭 Virtual Avatar Integration (Optional)
-
-The assistant can be configured to use a virtual avatar when interacting with users through video calls, which can be particularly helpful for blind users when communicating with sighted individuals.
-
-<details>
-<summary><b>Avatar Setup Instructions</b></summary>
-
-### Tavus Virtual Avatar Integration
-
-1. **Prerequisites**:
-   - Sign up for a [Tavus](https://tavus.com) account
-   - Create a replica (virtual avatar)
-   - Generate an API key
-
-2. **Installation**:
-   - The required dependencies are included in the requirements.txt file
-   - Make sure you have `livekit-agents[tavus]` and `livekit-plugins-tavus` installed
-
-3. **Configuration**:
-   Add the following to your `.env` file:
-   ```
-   # Tavus virtual avatar configuration
-   ENABLE_AVATAR=true
-   TAVUS_API_KEY=your_tavus_api_key
-   TAVUS_REPLICA_ID=your_replica_id
-   TAVUS_PERSONA_ID=your_persona_id
-   TAVUS_AVATAR_NAME=ally-vision-avatar
-   ```
-
-4. **Persona Setup**:
-   You need to create a Tavus persona with specific settings using the Tavus API:
-   ```bash
-   curl --request POST \
-     --url https://tavusapi.com/v2/personas \
-     -H "Content-Type: application/json" \
-     -H "x-api-key: <your-tavus-api-key>" \
-     -d '{
-       "layers": {
-           "transport": {
-               "transport_type": "livekit"
-           }
-       },
-       "persona_name": "Ally Assistant Avatar",
-       "pipeline_mode": "echo"
-   }'
-   ```
-   - Save the `id` from the response as your `TAVUS_PERSONA_ID`
-   - Use your replica ID as `TAVUS_REPLICA_ID`
-
-5. **When to Use**:
-   - Professional meetings where visual presence helps
-   - Family video calls with sighted relatives
-   - Educational or work environments
-   - Any situation where blind users benefit from having a visual representation
-
-The avatar will automatically handle the audio output when enabled, creating a seamless experience for both the blind user and sighted participants in the conversation.
-</details>
