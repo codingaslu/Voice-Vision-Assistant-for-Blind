@@ -29,6 +29,13 @@ CONFIG = {
 
     # Google Places API configuration
     "GPLACES_API_KEY": os.environ.get("GPLACES_API_KEY", ""),
+    
+    # Tavus virtual avatar configuration
+    "ENABLE_AVATAR": os.environ.get("ENABLE_AVATAR", "false") == "true",
+    "TAVUS_API_KEY": os.environ.get("TAVUS_API_KEY", ""),
+    "TAVUS_REPLICA_ID": os.environ.get("TAVUS_REPLICA_ID", ""),
+    "TAVUS_PERSONA_ID": os.environ.get("TAVUS_PERSONA_ID", ""),
+    "TAVUS_AVATAR_NAME": os.environ.get("TAVUS_AVATAR_NAME", "ally-vision-avatar"),
 
     # Common configuration
     "MAX_TOKENS": 500,

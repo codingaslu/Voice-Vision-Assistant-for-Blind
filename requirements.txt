@@ -1,4 +1,4 @@
-livekit-agents[deepgram,elevenlabs]>=1.0.0
+livekit-agents[deepgram,elevenlabs,tavus]>=1.0.0
 python-dotenv>=1.0.0
 #openai>=1.0.0
 librosa>=0.10.0
@@ -9,6 +9,7 @@ livekit-plugins-deepgram>=1.0.0
 livekit-plugins-openai>=1.0.0
 livekit-plugins-silero>=1.0.0
 livekit-plugins-elevenlabs>=1.0.0   
+livekit-plugins-tavus>=1.0.0
 livekit>=1.0.0
 livekit-api>=1.0.0
 

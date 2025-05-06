@@ -7,8 +7,8 @@ from pydantic import Field
 from livekit.agents import JobContext, cli
 from livekit.agents.llm import function_tool
 from livekit.agents.voice import Agent, AgentSession, RunContext
-from livekit.agents.voice.room_io import RoomInputOptions
-from livekit.plugins import deepgram, openai, elevenlabs, silero
+from livekit.agents.voice.room_io import RoomInputOptions, RoomOutputOptions
+from livekit.plugins import deepgram, openai, elevenlabs, silero, tavus
 from livekit.agents.llm.chat_context import ChatContext, ImageContent
 from livekit.agents.llm.llm import ChatChunk, ChoiceDelta
 
@@ -19,6 +19,7 @@ from .tools.groq_handler import GroqHandler
 from .tools.google_places import PlacesSearch
 from .tools.calendar import CalendarTool
 from .tools.communication import CommunicationTool
+from .config import get_config
 
 # Logger
 logger = logging.getLogger("ally-vision-agent")
@@ -532,10 +533,50 @@ async def entrypoint(ctx: JobContext):
             max_tool_steps=3,
         )
         
+        # Check for avatar configuration
+        config = get_config()
+        avatar = None
+        
+        # Only enable avatar if explicitly configured and all required parameters are present
+        avatar_enabled = config.get("ENABLE_AVATAR", False) and config.get("TAVUS_REPLICA_ID") and config.get("TAVUS_PERSONA_ID")
+        
+        if avatar_enabled:
+            try:
+                # Get avatar configuration from environment
+                replica_id = config.get("TAVUS_REPLICA_ID")
+                persona_id = config.get("TAVUS_PERSONA_ID")
+                avatar_name = config.get("TAVUS_AVATAR_NAME", "ally-vision-avatar")
+                
+                # Initialize avatar session
+                logger.info(f"Initializing Tavus avatar with replica_id: {replica_id}, persona_id: {persona_id}")
+                avatar = tavus.AvatarSession(
+                    replica_id=replica_id,
+                    persona_id=persona_id,
+                    avatar_participant_name=avatar_name
+                )
+                
+                # Start the avatar and wait for it to join
+                try:
+                    await avatar.start(agent_session, room=ctx.room)
+                    logger.info(f"Tavus avatar started successfully with name: {avatar_name}")
+                except Exception as e:
+                    logger.error(f"Failed to start Tavus avatar, continuing without avatar: {e}")
+                    avatar = None
+                    avatar_enabled = False
+            except Exception as e:
+                logger.error(f"Failed to initialize Tavus avatar: {e}")
+                avatar = None
+                avatar_enabled = False
+        
+        # Start the agent session with appropriate output options
         await agent_session.start(
             agent=agent,
             room=ctx.room,
             room_input_options=RoomInputOptions(),
+            room_output_options=RoomOutputOptions(
+                # Disable direct audio output if avatar is active, as avatar handles audio
+                audio_enabled=avatar is None,
+            ),
         )
         
     except Exception as e:
