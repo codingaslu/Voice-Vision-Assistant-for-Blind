@@ -213,7 +213,7 @@ ELEVEN_API_KEY=your_elevenlabs_key
 
 # Vision configuration
 VISION_PROVIDER=groq
-
+.
 # Groq API configuration
 GROQ_API_KEY=your_groq_api_key  # Get your API key from https://console.groq.com/keys
 GROQ_MODEL_ID=meta-llama/llama-4-scout-17b-16e-instruct
